@@ -1,0 +1,36 @@
+# 在本目录执行 git init，仓库根目录即本模组，即可只向 GitHub 提交此文件夹内容。
+
+# Gradle / Fabric Loom
+.gradle/
+build/
+gradle-temp/
+out/
+bin/
+classes/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.code-workspace
+
+# 本地 / 系统
+*.log
+*.tmp
+*.swp
+Thumbs.db
+.DS_Store
+
+# Python（scripts/）
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+
+# 误下载或临时文件
+gradle-test.txt

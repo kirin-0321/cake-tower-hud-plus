@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "ctt-health-display",
+  "version": "${version}",
+  "name": "Cake Tower HUD Plus",
+  "description": "蛋糕塔 Chapter 3 (Cake Team Towers) 专用纯客户端 HUD：自绘血量条、属性面板、队友头顶血条、怪物追踪、攻击者归属、伤害分配 (L)、K/D/A 统计 (N)。可拖拽 + ModMenu。\nClient-only HUD for Cake Team Towers Chapter 3: custom health bars, stats panel, teammate overhead bars, mob tracking, attacker attribution, damage panel (L), K/D/A stats (N). Drag-to-position + ModMenu.\n\nv6.0+ 服务端功能由 OnlyScoutCat 赞助 · 服务器 sc4.i9idc.com:12439\nServer-side features (v6.0+) sponsored by OnlyScoutCat · sc4.i9idc.com:12439",
+  "authors": ["\u9e92\u9e9f(Kirin0321)"],
+  "contributors": [
+    "OnlyScoutCat (Sponsor · MC Server sc4.i9idc.com:12439)"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/ctt-health-display/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "com.ctt.healthdisplay.CttHealthDisplay"
+    ],
+    "main": [
+      "com.ctt.healthdisplay.server.CttStatsServer"
+    ],
+    "modmenu": [
+      "com.ctt.healthdisplay.ModMenuIntegration"
+    ]
+  },
+  "mixins": [
+    {
+      "config": "ctt-health-display.mixins.json",
+      "environment": "client"
+    },
+    "ctt-health-display-server.mixins.json"
+  ],
+  "suggests": {
+    "modmenu": "*"
+  },
+  "depends": {
+    "fabricloader": ">=0.16.9",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

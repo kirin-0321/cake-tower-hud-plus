@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.ctt.healthdisplay.server.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ScoreboardUpdateMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

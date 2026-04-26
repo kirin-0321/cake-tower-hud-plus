@@ -1,0 +1,17 @@
+pluginManagement {
+    repositories {
+        maven { url "https://maven.aliyun.com/repository/gradle-plugin" }
+        maven { url "https://maven.aliyun.com/repository/central" }
+        maven { url "https://maven.aliyun.com/repository/public" }
+        maven { url "https://repo.huaweicloud.com/repository/maven/" }
+        maven { url "https://maven.fabricmc.net/" }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+}
+
+rootProject.name = "ctt-health-display"

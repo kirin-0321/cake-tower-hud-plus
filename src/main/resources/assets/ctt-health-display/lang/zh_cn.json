@@ -1,0 +1,64 @@
+{
+  "category.ctt-health-display": "蛋糕塔 HUD 增强",
+  "key.ctt-health-display.toggle_hud": "切换 CTT 血条",
+  "key.ctt-health-display.toggle_vanilla": "切换原版血条",
+  "key.ctt-health-display.toggle_stats": "切换状态信息",
+  "key.ctt-health-display.toggle_bossbars": "切换 Boss 栏显示",
+  "key.ctt-health-display.toggle_dmg_session": "显示/隐藏伤害分配面板",
+  "key.ctt-health-display.toggle_stats_table": "打开统计表格面板",
+
+  "ctt-health-display.config.title": "Cake Tower HUD Plus 配置",
+  "ctt-health-display.config.hint_drag": "\u25C0 拖拽移动面板位置",
+  "ctt-health-display.config.header_options": "\u2699 配置选项",
+
+  "ctt-health-display.config.btn.reset_position": "重置位置",
+  "ctt-health-display.config.btn.done": "完成",
+
+  "ctt-health-display.config.preview.teammate_health": "队友血量",
+  "ctt-health-display.config.preview.stats_panel": "属性面板",
+
+  "ctt-health-display.config.value.on": "\u00a7a开",
+  "ctt-health-display.config.value.off": "\u00a7c关",
+  "ctt-health-display.config.value.yes": "\u00a7a是",
+  "ctt-health-display.config.value.no": "\u00a7c否",
+
+  "ctt-health-display.config.value.layout.horizontal": "横向",
+  "ctt-health-display.config.value.layout.vertical": "纵向",
+
+  "ctt-health-display.config.value.stats_visibility.always": "\u00a7a常显",
+  "ctt-health-display.config.value.stats_visibility.inventory": "\u00a7e背包显示",
+  "ctt-health-display.config.value.stats_visibility.hidden": "\u00a7c隐藏",
+
+  "ctt-health-display.config.value.mob_hp_mode.all": "\u00a7a全部显示",
+  "ctt-health-display.config.value.mob_hp_mode.nearest": "\u00a7e显示最近",
+  "ctt-health-display.config.value.mob_hp_mode.off": "\u00a7c关",
+
+  "ctt-health-display.config.option.teammate_head_hp": "队友头顶血量: %s",
+  "ctt-health-display.config.option.mob_head_hp": "怪物头顶血量: %s",
+  "ctt-health-display.config.option.teammate_layout": "队友布局: %s",
+  "ctt-health-display.config.option.refresh_interval_seconds": "属性刷新时间: %s秒",
+  "ctt-health-display.config.option.mob_bar_width": "怪物血条宽度: %s",
+  "ctt-health-display.config.option.teammate_bar_width": "队友血条宽度: %s",
+  "ctt-health-display.config.option.stats_columns": "属性栏列数: %s列",
+  "ctt-health-display.config.option.stats_visibility": "属性栏显示: %s",
+  "ctt-health-display.config.option.hide_personal_bossbar": "隐藏自身Boss栏: %s",
+  "ctt-health-display.config.option.hide_team_bossbar": "隐藏队友Boss栏: %s",
+  "ctt-health-display.config.option.hide_mob_bossbars": "隐藏怪物Boss栏: %s",
+
+  "ctt-health-display.config.option.broadcast_damage": "聊天栏广播·伤害: %s",
+  "ctt-health-display.config.option.broadcast_kills": "聊天栏广播·击杀: %s",
+  "ctt-health-display.config.option.broadcast_taken": "聊天栏广播·承伤: %s",
+
+  "ctt-health-display.config.btn.open_server_config": "服务器配置 \u25b6",
+
+  "ctt-health-display.config.server.title": "服务器配置",
+  "ctt-health-display.config.server.subtitle": "\u00a77写到 config/ctt-health-display-server.json · 仅集成单机即时生效",
+  "ctt-health-display.config.server.btn.cancel": "取消",
+  "ctt-health-display.config.server.option.broadcast_taken_threshold": "承伤广播阈值: \u2265 %s",
+  "ctt-health-display.config.server.option.use_red_hearts_tally": "RedHearts 主数据源: %s",
+  "ctt-health-display.config.server.option.filter_init_hp_jumps": "过滤初始血量跳变: %s",
+  "ctt-health-display.config.server.option.filter_suspect_victims": "过滤可疑受害者大数: %s",
+  "ctt-health-display.config.server.option.suspect_victim_threshold": "可疑受害者阈值: %s",
+  "ctt-health-display.config.server.info.init_hp_values": "\u00a78初始血量列表: %s",
+  "ctt-health-display.config.server.info.suspect_victims": "\u00a78可疑受害者: %s"
+}

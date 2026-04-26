@@ -1,0 +1,774 @@
+{
+  "version": 1,
+  "generatedBy": "gen_stage_name_map.py",
+  "source": "g:/MC/.minecraft/versions/1.21.4-Fabric_0.19.1/saves/Cake Team Towers Chapter 3 Update #4.0.12 (The Heart of Otherside) (Premium)/datapacks/CakeTeamPack/data/cake_team_tower/function",
+  "kinds": {
+    "dungeon": {
+      "1": {
+        "en": "Skeleton Dungeon",
+        "zh_cn": "骷髅地牢",
+        "slug": "skeleton_dungeon",
+        "key": "Skeleton Dungeon"
+      },
+      "2": {
+        "en": "Bumble Rumble",
+        "zh_cn": "蜜蜂嗡嗡",
+        "slug": "bumble_rumble",
+        "key": "Bumble Rumble"
+      },
+      "3": {
+        "en": "Prison",
+        "zh_cn": "监狱",
+        "slug": "prison",
+        "key": "Prison"
+      },
+      "4": {
+        "en": "Necroville",
+        "zh_cn": "恶灵村落",
+        "slug": "necrovile",
+        "key": "Necroville"
+      },
+      "5": {
+        "en": "Forest Maze",
+        "zh_cn": "森林迷宫",
+        "slug": "forest_maze",
+        "key": "Forest Maze"
+      },
+      "6": {
+        "en": "Lava Lake",
+        "zh_cn": "熔岩湖",
+        "slug": "lava_lake",
+        "key": "Lava Lake"
+      },
+      "7": {
+        "en": "Downpour",
+        "zh_cn": "水漫地牢",
+        "slug": "downpoor",
+        "key": "Downpour"
+      },
+      "8": {
+        "en": "Nether",
+        "zh_cn": "下界",
+        "slug": "nether",
+        "key": "Nether"
+      },
+      "9": {
+        "en": "Library",
+        "zh_cn": "图书馆",
+        "slug": "library",
+        "key": "Library"
+      },
+      "10": {
+        "en": "Nether Fortress",
+        "zh_cn": "下界堡垒",
+        "slug": "nether_fortress",
+        "key": "Nether Fortress"
+      },
+      "11": {
+        "en": "Raid",
+        "zh_cn": "袭击",
+        "slug": "raid",
+        "key": "Raid"
+      },
+      "12": {
+        "en": "Sunken Sea",
+        "zh_cn": "陷落之海",
+        "slug": "sunken_sea",
+        "key": "Sunken Sea"
+      },
+      "13": {
+        "en": "The Lab",
+        "zh_cn": "实验室",
+        "slug": "the_lab",
+        "key": "The Lab"
+      },
+      "14": {
+        "en": "Sky Scraper",
+        "zh_cn": "摩天大楼",
+        "slug": "sky_scraper",
+        "key": "Sky Scraper"
+      },
+      "15": {
+        "en": "Iceberg",
+        "zh_cn": "冰山",
+        "slug": "iceberg",
+        "key": "Iceberg"
+      },
+      "16": {
+        "en": "Overgrown",
+        "zh_cn": "蔓生之地",
+        "slug": "overgrown",
+        "key": "Overgrown"
+      },
+      "17": {
+        "en": "Charleston Chungus",
+        "zh_cn": "查尔斯顿·兔霸哥",
+        "slug": "charleston_chungus",
+        "key": "Charleston Chungus"
+      },
+      "18": {
+        "en": "Haunted Mansion",
+        "zh_cn": "闹鬼府邸",
+        "slug": "haunted_mansion",
+        "key": "Haunted Mansion"
+      },
+      "19": {
+        "en": "Otherside",
+        "zh_cn": "彼端",
+        "slug": "otherside",
+        "key": "Otherside"
+      },
+      "20": {
+        "en": "Trick Or Treat",
+        "zh_cn": "不给糖就捣蛋",
+        "slug": "trick_or_treat",
+        "key": "Trick Or Treat"
+      },
+      "21": {
+        "en": "Lost World",
+        "zh_cn": "失落世界",
+        "slug": "lost_world",
+        "key": "Lost World"
+      },
+      "22": {
+        "en": "A Party's World",
+        "zh_cn": null,
+        "slug": "a_partys_world",
+        "key": null
+      },
+      "23": {
+        "en": "Davids Pinball Machine",
+        "zh_cn": "大卫的弹球机",
+        "slug": "davids_pinball_machine",
+        "key": "Davids Pinball Machine"
+      },
+      "24": {
+        "en": "The Skeld",
+        "zh_cn": "经典太空船",
+        "slug": "the_skeld",
+        "key": "The Skeld"
+      },
+      "25": {
+        "en": "Prismarine Tundra",
+        "zh_cn": "海晶苔原",
+        "slug": "prismarine_tundra",
+        "key": "Prismarine Tundra"
+      },
+      "26": {
+        "en": "Anthill Thrill",
+        "zh_cn": "蚁山惊魂",
+        "slug": "ant_hill_thrill",
+        "key": "Anthill Thrill"
+      },
+      "27": {
+        "en": "Dojo of Glory",
+        "zh_cn": "荣耀道场",
+        "slug": "dojo_of_glory",
+        "key": "Dojo of Glory"
+      },
+      "28": {
+        "en": "Eroded Catacombs",
+        "zh_cn": "腐蚀陵墓",
+        "slug": "eroded_catacombs",
+        "key": "Eroded Catacombs"
+      },
+      "29": {
+        "en": "The Chest",
+        "zh_cn": "宝箱地牢",
+        "slug": "the_chest",
+        "key": "The Chest"
+      },
+      "30": {
+        "en": "Coaster Chaos Elite",
+        "zh_cn": "精英级混沌过山车",
+        "slug": "coaster_chaos_elite",
+        "key": "Coaster Chaos Elite"
+      },
+      "31": {
+        "en": "Treasure Trove Cove",
+        "zh_cn": "藏宝湾",
+        "slug": "treasure_trove_cove",
+        "key": "Treasure Trove Cove"
+      },
+      "32": {
+        "en": "Lonely Cabin",
+        "zh_cn": "偏僻小屋",
+        "slug": "lonely_cabin",
+        "key": "Lonely Cabin"
+      },
+      "33": {
+        "en": "Electro Circus",
+        "zh_cn": "伊莱克马戏团",
+        "slug": "electro_circus",
+        "key": "Electro Circus"
+      },
+      "34": {
+        "en": "Sword Fights on the Heights",
+        "zh_cn": "高地剑斗",
+        "slug": "sfoth",
+        "key": "Sword Fights on the Heights"
+      },
+      "35": {
+        "en": "Oculus Sea",
+        "zh_cn": "魔环海",
+        "slug": "oculus_sea",
+        "key": "Oculus Sea"
+      },
+      "36": {
+        "en": "The Hive",
+        "zh_cn": "蜂巢",
+        "slug": "the_hive",
+        "key": "The Hive"
+      },
+      "37": {
+        "en": "Antopolis",
+        "zh_cn": "蚁都",
+        "slug": "antopolis",
+        "key": "Antopolis"
+      },
+      "38": {
+        "en": "Operation Bumble Crumble",
+        "zh_cn": "蜜蜂崩崩行动",
+        "slug": "operation_bumble_crumble",
+        "key": "Operation Bumble Crumble"
+      },
+      "39": {
+        "en": "Operation Anthill Kill",
+        "zh_cn": "蚁山杀戮行动",
+        "slug": "operation_anthill_kill",
+        "key": "Operation Anthill Kill"
+      },
+      "40": {
+        "en": "Henrys Lab",
+        "zh_cn": "亨利的实验室",
+        "slug": "henrys_lab",
+        "key": "Henrys Lab"
+      },
+      "41": {
+        "en": "Halloween Town",
+        "zh_cn": "万圣节小镇",
+        "slug": "halloween_town",
+        "key": "Halloween Town"
+      },
+      "42": {
+        "en": "Garden of Hope",
+        "zh_cn": "希望花园",
+        "slug": "garden_of_hope",
+        "key": "Garden of Hope"
+      },
+      "43": {
+        "en": "Oculus Ruins",
+        "zh_cn": "魔环废墟",
+        "slug": "oculus_ruins",
+        "key": "Oculus Ruins"
+      },
+      "44": {
+        "en": "Abandoned Battlefield",
+        "zh_cn": "废弃战场",
+        "slug": "abandoned_battlefield",
+        "key": "Abandoned Battlefield"
+      },
+      "45": {
+        "en": "Enchanted Observatory",
+        "zh_cn": "魔法天文台",
+        "slug": "enchanted_observatory",
+        "key": "Enchanted Observatory"
+      },
+      "46": {
+        "en": "Devis Castle",
+        "zh_cn": "戴维的城堡",
+        "slug": "devis_castle",
+        "key": "Devis Castle"
+      },
+      "47": {
+        "en": "The Race",
+        "zh_cn": "赛马",
+        "slug": "the_race",
+        "key": "The Race"
+      },
+      "48": {
+        "en": "Doomspire Brickbattle",
+        "zh_cn": "末日尖塔砖战",
+        "slug": "doomspire_brickbattle",
+        "key": "Doomspire Brickbattle"
+      },
+      "49": {
+        "en": "Hollow Wood",
+        "zh_cn": "空洞树林",
+        "slug": "hollow_wood",
+        "key": "Hollow Wood"
+      },
+      "50": {
+        "en": "Caved In",
+        "zh_cn": "洞穴内",
+        "slug": "caved_in",
+        "key": "Caved In"
+      },
+      "51": {
+        "en": "Floating Glaciers",
+        "zh_cn": "飘浮冰川",
+        "slug": "floating_glaciers",
+        "key": "Floating Glaciers"
+      },
+      "52": {
+        "en": "Bobsled Run",
+        "zh_cn": "雪橇滑道",
+        "slug": "bobsled_run",
+        "key": "Bobsled Run"
+      },
+      "53": {
+        "en": "The Blossom Pirates",
+        "zh_cn": "樱花海盗团",
+        "slug": "the_blossom_pirates",
+        "key": "The Blossom Pirates"
+      },
+      "54": {
+        "en": "Kai Treetops",
+        "zh_cn": "卡伊树顶",
+        "slug": "kai_treetops",
+        "key": "Kai Treetops"
+      },
+      "55": {
+        "en": "Seized Town",
+        "zh_cn": "被夺取的城镇",
+        "slug": "seized_town",
+        "key": "Seized Town"
+      },
+      "56": {
+        "en": "End City",
+        "zh_cn": "末地城",
+        "slug": "end_city",
+        "key": "End City"
+      },
+      "57": {
+        "en": "The Deep Dark",
+        "zh_cn": "深暗之域",
+        "slug": "the_deep_dark",
+        "key": "The Deep Dark"
+      },
+      "58": {
+        "en": "Blossom Bay",
+        "zh_cn": "樱花海湾",
+        "slug": "blossom_bay",
+        "key": "Blossom Bay"
+      },
+      "59": {
+        "en": "Joeys Manor",
+        "zh_cn": "乔伊的庄园",
+        "slug": "joeys_manor",
+        "key": "Joeys Manor"
+      },
+      "60": {
+        "en": "Sweet Canyon",
+        "zh_cn": "甜蜜峡谷",
+        "slug": "sweet_canyon",
+        "key": "Sweet Canyon"
+      },
+      "61": {
+        "en": "Death Mountain",
+        "zh_cn": "死亡山",
+        "slug": "death_mountain",
+        "key": "Death Mountain"
+      },
+      "62": {
+        "en": "Tower of Glory",
+        "zh_cn": "荣耀塔楼",
+        "slug": "tower_of_glory",
+        "key": "Tower of Glory"
+      },
+      "63": {
+        "en": "Sky Ball",
+        "zh_cn": "天空球",
+        "slug": "skyball",
+        "key": "Sky Ball"
+      },
+      "64": {
+        "en": "Pale Cavern",
+        "zh_cn": "苍白洞穴",
+        "slug": "pale_cavern",
+        "key": "Pale Cavern"
+      },
+      "65": {
+        "en": "2XXX",
+        "zh_cn": "2XXX",
+        "slug": "2xxx",
+        "key": "2XXX"
+      },
+      "66": {
+        "en": "The Scrapyard Concert",
+        "zh_cn": "废品回收站音乐会",
+        "slug": "the_scrapyard_concert",
+        "key": "The Scrapyard Concert"
+      },
+      "67": {
+        "en": "Sweet Canyon Cake",
+        "zh_cn": null,
+        "slug": "sweet_canyon_cake",
+        "key": null
+      }
+    },
+    "boss": {
+      "1": {
+        "en": "Gladiatus",
+        "zh_cn": "格拉迪亚图斯",
+        "slug": "gladiatus",
+        "key": "Gladiatus"
+      },
+      "2": {
+        "en": "Talus",
+        "zh_cn": "塔卢斯",
+        "slug": "talus",
+        "key": "Talus"
+      },
+      "3": {
+        "en": "Dharkon",
+        "zh_cn": "达兹",
+        "slug": "dharkon",
+        "key": "Dharkon"
+      },
+      "4": {
+        "en": "Possessed Glacium",
+        "zh_cn": "被附身的格拉希厄姆",
+        "slug": "possesed_glacium",
+        "key": "Possessed Glacium"
+      },
+      "5": {
+        "en": "Fury David",
+        "zh_cn": "狂怒的大卫",
+        "slug": "fury_david",
+        "key": "Fury David"
+      },
+      "6": {
+        "en": "Sanctuary",
+        "zh_cn": "庇护所",
+        "slug": "sanctuary",
+        "key": "Sanctuary"
+      },
+      "7": {
+        "en": "Spamton",
+        "zh_cn": "斯潘顿",
+        "slug": "spamton",
+        "key": "Spamton"
+      },
+      "8": {
+        "en": "The Summoner",
+        "zh_cn": "召唤师",
+        "slug": "the_summoner",
+        "key": "The Summoner"
+      },
+      "9": {
+        "en": "Aquium",
+        "zh_cn": "亚奎姆",
+        "slug": "aquium",
+        "key": "Aquium"
+      },
+      "10": {
+        "en": "Hush Hush Henry",
+        "zh_cn": "嘘嘘亨利",
+        "slug": "hush_hush_henry",
+        "key": "Hush Hush Henry"
+      },
+      "11": {
+        "en": "Buck Rumble",
+        "zh_cn": "巴克嗡嗡",
+        "slug": "buck_rumble",
+        "key": "Buck Rumble"
+      },
+      "12": {
+        "en": "Electrium",
+        "zh_cn": "伊莱克提姆",
+        "slug": "electrium",
+        "key": "Electrium"
+      },
+      "13": {
+        "en": "Oogie Boogie",
+        "zh_cn": "巫奇布基",
+        "slug": "oogie_boogie",
+        "key": "Oogie Boogie"
+      },
+      "14": {
+        "en": "Devi",
+        "zh_cn": "戴维",
+        "slug": "devi",
+        "key": "Devi"
+      },
+      "15": {
+        "en": "Demon Queen Devi",
+        "zh_cn": "恶魔女皇戴维",
+        "slug": "demon_queen_devi",
+        "key": "Demon Queen Devi"
+      },
+      "16": {
+        "en": "Psy",
+        "zh_cn": "鸟叔",
+        "slug": "psy",
+        "key": "Psy"
+      },
+      "17": {
+        "en": "Quartz",
+        "zh_cn": "石英",
+        "slug": "quartz",
+        "key": "Quartz"
+      },
+      "18": {
+        "en": "Magum",
+        "zh_cn": "玛古姆",
+        "slug": "magum",
+        "key": "Magum"
+      },
+      "19": {
+        "en": "Doctor Ivy",
+        "zh_cn": "艾薇医生",
+        "slug": "doctor_ivy",
+        "key": "Doctor Ivy"
+      },
+      "20": {
+        "en": "Test Dummy",
+        "zh_cn": "测试假人",
+        "slug": "test_dummy",
+        "key": "Test Dummy"
+      },
+      "21": {
+        "en": "Dracula",
+        "zh_cn": "德古拉",
+        "slug": "dracula",
+        "key": "Dracula"
+      },
+      "22": {
+        "en": "Glockness Monster",
+        "zh_cn": "巨枪海怪",
+        "slug": "glockness_monster",
+        "key": "Glockness Monster"
+      },
+      "23": {
+        "en": "Old Explorer",
+        "zh_cn": "年迈的探险家",
+        "slug": "old_explorer",
+        "key": "Old Explorer"
+      },
+      "24": {
+        "en": "Floria",
+        "zh_cn": "芙萝拉",
+        "slug": "floria",
+        "key": "Floria"
+      },
+      "25": {
+        "en": "Magum Inferno",
+        "zh_cn": "炼狱玛古姆",
+        "slug": "magum_inferno",
+        "key": "Magum Inferno"
+      },
+      "26": {
+        "en": "Gladiatium",
+        "zh_cn": "格拉迪亚图姆",
+        "slug": "gladiatium",
+        "key": "Gladiatium"
+      },
+      "27": {
+        "en": "Crystaline Collective",
+        "zh_cn": "紫水晶意识体",
+        "slug": "crystaline_collective",
+        "key": "Crystaline Collective"
+      }
+    },
+    "miniboss": {},
+    "shop": {
+      "1": {
+        "en": "Main Shop",
+        "zh_cn": "主商店",
+        "slug": "main_shop",
+        "key": "Main Shop"
+      },
+      "2": {
+        "en": "Marios Shop",
+        "zh_cn": "马里奥商店",
+        "slug": "marios_shop",
+        "key": "Marios Shop"
+      },
+      "3": {
+        "en": "The Armorer",
+        "zh_cn": "盔甲大师",
+        "slug": "the_armorer",
+        "key": "The Armorer"
+      },
+      "4": {
+        "en": "Badgey The Badger",
+        "zh_cn": "徽章商人巴奇",
+        "slug": "badgey_the_badger",
+        "key": "Badgey The Badger"
+      },
+      "5": {
+        "en": "Classic Shop",
+        "zh_cn": "经典商店",
+        "slug": "classic_shop",
+        "key": "Classic Shop"
+      },
+      "6": {
+        "en": "Grim Reaper",
+        "zh_cn": "死神",
+        "slug": "grim_reaper",
+        "key": "Grim Reaper"
+      },
+      "7": {
+        "en": "Party Shop",
+        "zh_cn": "派对商店",
+        "slug": "party_shop",
+        "key": "Party Shop"
+      },
+      "8": {
+        "en": "Casino",
+        "zh_cn": "赌场",
+        "slug": "casino",
+        "key": "Casino"
+      },
+      "9": {
+        "en": "Spamton's Shop",
+        "zh_cn": "斯潘顿的商店",
+        "slug": "spamton_shop",
+        "key": "Spamton's Shop"
+      },
+      "10": {
+        "en": "Bug Shop",
+        "zh_cn": null,
+        "slug": "bug_shop",
+        "key": null
+      },
+      "11": {
+        "en": "Forest Oasis",
+        "zh_cn": "林中绿洲",
+        "slug": "forest_oasis",
+        "key": "Forest Oasis"
+      },
+      "12": {
+        "en": "Petal Park",
+        "zh_cn": "花瓣公园",
+        "slug": "petal_park",
+        "key": "Petal Park"
+      },
+      "13": {
+        "en": "Neko Island",
+        "zh_cn": "猫咪森屿",
+        "slug": "neko_island",
+        "key": "Neko Island"
+      },
+      "14": {
+        "en": "Christmas Town",
+        "zh_cn": "圣诞小镇",
+        "slug": "christmas_town",
+        "key": "Christmas Town"
+      },
+      "15": {
+        "en": "Florias Garden",
+        "zh_cn": "芙萝拉的花园",
+        "slug": "florias_garden",
+        "key": "Florias Garden"
+      }
+    },
+    "ally": {
+      "1": {
+        "en": "Wazy",
+        "zh_cn": "威琪",
+        "slug": "wazy",
+        "key": "Wazy"
+      },
+      "2": {
+        "en": "Moose",
+        "zh_cn": "慕斯",
+        "slug": "moose",
+        "key": "Moose"
+      },
+      "3": {
+        "en": "Nut",
+        "zh_cn": "坚果",
+        "slug": "nut",
+        "key": "Nut"
+      },
+      "4": {
+        "en": "Thew",
+        "zh_cn": "休",
+        "slug": "thew",
+        "key": "Thew"
+      },
+      "5": {
+        "en": "Smash",
+        "zh_cn": "斯麦什",
+        "slug": "smash",
+        "key": "Smash"
+      },
+      "6": {
+        "en": "David",
+        "zh_cn": "大卫",
+        "slug": "david",
+        "key": "David"
+      }
+    },
+    "misc": {
+      "1": {
+        "en": "Muck",
+        "zh_cn": null,
+        "slug": "muck",
+        "key": null
+      },
+      "3": {
+        "en": "Crypt of the Necrodancer",
+        "zh_cn": "死灵法师的墓穴",
+        "slug": "crypt_of_the_necrodancer",
+        "key": "Crypt of the Necrodancer"
+      },
+      "4": {
+        "en": "Bow Training",
+        "zh_cn": "弓箭训练",
+        "slug": "bow_training",
+        "key": "Bow Training"
+      },
+      "5": {
+        "en": "Sheep Game",
+        "zh_cn": "绵羊游戏",
+        "slug": "sheep_game",
+        "key": "Sheep Game"
+      },
+      "6": {
+        "en": "Jelly Trials",
+        "zh_cn": "果冻试炼",
+        "slug": "jelly_trials",
+        "key": "Jelly Trials"
+      },
+      "7": {
+        "en": "Wave Mode",
+        "zh_cn": "波次模式",
+        "slug": "wave_mode",
+        "key": "Wave Mode"
+      },
+      "8": {
+        "en": "Snowball Civilization",
+        "zh_cn": "雪球文明",
+        "slug": "snowball_civilization",
+        "key": "Snowball Civilization"
+      },
+      "9": {
+        "en": "Muck Survivor",
+        "zh_cn": "Muck 幸存者",
+        "slug": "muck_survivor",
+        "key": "Muck Survivor"
+      },
+      "10": {
+        "en": "Muck Level Up Room",
+        "zh_cn": null,
+        "slug": "muck_level_up_room",
+        "key": null
+      },
+      "11": {
+        "en": "Training Grounds",
+        "zh_cn": "训练场",
+        "slug": "training_grounds",
+        "key": "Training Grounds"
+      }
+    }
+  },
+  "stats": {
+    "total": 125,
+    "matched": 120,
+    "missed": 5,
+    "blacklisted": 3
+  }
+}

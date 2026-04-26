@@ -1,0 +1,113 @@
+plugins {
+    id 'fabric-loom' version '1.9-SNAPSHOT'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    maven { url "https://maven.aliyun.com/repository/central" }
+    maven { url "https://maven.aliyun.com/repository/public" }
+    maven {
+        name "BMCLAPI-Maven"
+        url "https://bmclapi2.bangbang93.com/maven"
+    }
+    maven { url "https://repo.huaweicloud.com/repository/maven/" }
+    maven { url "https://maven.fabricmc.net/" }
+    maven { url "https://api.modrinth.com/maven" }
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    withSourcesJar()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    modCompileOnly "maven.modrinth:modmenu:13.0.4"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+// 部署策略（v6.1.1 调整）：
+//   1. 先 copy 新 jar 到 mods/（Copy 任务默认 execution 阶段）
+//   2. doLast 再尝试清理旧版本 jar
+//   3. 旧 jar 若被游戏进程锁住（文件占用），仅打印 WARN，不让整个 build 失败
+//      —— Fabric Loader 启动时对 mods/ 内同 mod id 多版本会按文件版本号偏好最新一个，
+//         游戏下次重启后旧 jar 释放锁，再次 build 会自动清掉残留。
+tasks.register('deployToMods', Copy) {
+    dependsOn remapJar
+    from(remapJar.archiveFile)
+    into("G:/MC/.minecraft/versions/1.21.4-Fabric_0.19.1/mods")
+
+    doLast {
+        def modsDir = file("G:/MC/.minecraft/versions/1.21.4-Fabric_0.19.1/mods")
+        def newJarName = remapJar.archiveFile.get().asFile.name
+        def patterns = ["cake-tower-hud-plus-", "ctt-health-display-"]
+
+        modsDir.listFiles()?.each { f ->
+            if (!f.name.endsWith(".jar")) return
+            if (f.name == newJarName) return
+            if (!patterns.any { f.name.startsWith(it) }) return
+
+            try {
+                if (f.delete()) {
+                    logger.lifecycle("[deployToMods] 清理旧版本: ${f.name}")
+                } else {
+                    logger.warn("[deployToMods] ${f.name} 被占用（游戏运行中？），跳过；下次 build 再清理")
+                }
+            } catch (Exception e) {
+                logger.warn("[deployToMods] 删除 ${f.name} 失败（${e.message}），跳过")
+            }
+        }
+    }
+}
+
+tasks.named('build') {
+    finalizedBy 'deployToMods'
+}
+
+// remapJar 真正产出新 jar 后（非 UP-TO-DATE），把 gradle.properties 的 mod_version 补丁号 +1。
+// 规则：X.Y → X.Y.1； X.Y.Z → X.Y.(Z+1)
+// 设计原因：doLast 挂在 remapJar 上，若源码未改 (UP-TO-DATE) remapJar 不执行动作，也就不会空涨版本号。
+tasks.named('remapJar') {
+    doLast {
+        def propsFile = file('gradle.properties')
+        def text = propsFile.text
+        def matcher = text =~ /(?m)^mod_version=([\d.]+)[ \t]*$/
+        if (!matcher.find()) {
+            logger.warn("[bumpVersion] mod_version 未在 gradle.properties 中找到，跳过自增")
+            return
+        }
+        def oldVer = matcher.group(1)
+        def parts = oldVer.tokenize('.').collect { it as int }
+        if (parts.size() < 3) {
+            while (parts.size() < 2) parts << 0
+            parts << 1
+        } else {
+            parts[-1] = parts[-1] + 1
+        }
+        def newVer = parts.join('.')
+        propsFile.text = text.replaceFirst(/(?m)^mod_version=[\d.]+[ \t]*$/, "mod_version=${newVer}")
+        logger.lifecycle("[bumpVersion] ${oldVer} -> ${newVer} (下次构建使用)")
+    }
+}

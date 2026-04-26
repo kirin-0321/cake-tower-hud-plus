@@ -1,0 +1,64 @@
+{
+  "category.ctt-health-display": "Cake Tower HUD Plus",
+  "key.ctt-health-display.toggle_hud": "Toggle CTT Health Bar",
+  "key.ctt-health-display.toggle_vanilla": "Toggle Vanilla Health Bar",
+  "key.ctt-health-display.toggle_stats": "Toggle Stats Display",
+  "key.ctt-health-display.toggle_bossbars": "Toggle Boss Bar Display",
+  "key.ctt-health-display.toggle_dmg_session": "Show/Hide Damage Panel",
+  "key.ctt-health-display.toggle_stats_table": "Open Stats Table",
+
+  "ctt-health-display.config.title": "Cake Tower HUD Plus Settings",
+  "ctt-health-display.config.hint_drag": "\u25C0 Drag to move panel position",
+  "ctt-health-display.config.header_options": "\u2699 Options",
+
+  "ctt-health-display.config.btn.reset_position": "Reset Position",
+  "ctt-health-display.config.btn.done": "Done",
+
+  "ctt-health-display.config.preview.teammate_health": "Teammate Health",
+  "ctt-health-display.config.preview.stats_panel": "Stats Panel",
+
+  "ctt-health-display.config.value.on": "\u00a7aON",
+  "ctt-health-display.config.value.off": "\u00a7cOFF",
+  "ctt-health-display.config.value.yes": "\u00a7aYes",
+  "ctt-health-display.config.value.no": "\u00a7cNo",
+
+  "ctt-health-display.config.value.layout.horizontal": "Horizontal",
+  "ctt-health-display.config.value.layout.vertical": "Vertical",
+
+  "ctt-health-display.config.value.stats_visibility.always": "\u00a7aAlways",
+  "ctt-health-display.config.value.stats_visibility.inventory": "\u00a7eInventory",
+  "ctt-health-display.config.value.stats_visibility.hidden": "\u00a7cHidden",
+
+  "ctt-health-display.config.value.mob_hp_mode.all": "\u00a7aAll",
+  "ctt-health-display.config.value.mob_hp_mode.nearest": "\u00a7eNearest",
+  "ctt-health-display.config.value.mob_hp_mode.off": "\u00a7cOff",
+
+  "ctt-health-display.config.option.teammate_head_hp": "Teammate head HP: %s",
+  "ctt-health-display.config.option.mob_head_hp": "Mob head HP: %s",
+  "ctt-health-display.config.option.teammate_layout": "Teammate layout: %s",
+  "ctt-health-display.config.option.refresh_interval_seconds": "Stats refresh interval: %s s",
+  "ctt-health-display.config.option.mob_bar_width": "Mob HP bar width: %s",
+  "ctt-health-display.config.option.teammate_bar_width": "Teammate HP bar width: %s",
+  "ctt-health-display.config.option.stats_columns": "Stats columns: %s",
+  "ctt-health-display.config.option.stats_visibility": "Stats visibility: %s",
+  "ctt-health-display.config.option.hide_personal_bossbar": "Hide personal bossbar: %s",
+  "ctt-health-display.config.option.hide_team_bossbar": "Hide team bossbar: %s",
+  "ctt-health-display.config.option.hide_mob_bossbars": "Hide mob bossbars: %s",
+
+  "ctt-health-display.config.option.broadcast_damage": "Chat broadcast · Damage: %s",
+  "ctt-health-display.config.option.broadcast_kills": "Chat broadcast · Kills: %s",
+  "ctt-health-display.config.option.broadcast_taken": "Chat broadcast · Taken: %s",
+
+  "ctt-health-display.config.btn.open_server_config": "Server Config \u25b6",
+
+  "ctt-health-display.config.server.title": "Server Config",
+  "ctt-health-display.config.server.subtitle": "\u00a77Writes config/ctt-health-display-server.json · Integrated server only",
+  "ctt-health-display.config.server.btn.cancel": "Cancel",
+  "ctt-health-display.config.server.option.broadcast_taken_threshold": "Taken broadcast threshold: \u2265 %s",
+  "ctt-health-display.config.server.option.use_red_hearts_tally": "RedHearts as primary source: %s",
+  "ctt-health-display.config.server.option.filter_init_hp_jumps": "Filter initial HP jumps: %s",
+  "ctt-health-display.config.server.option.filter_suspect_victims": "Filter suspect victim spikes: %s",
+  "ctt-health-display.config.server.option.suspect_victim_threshold": "Suspect victim threshold: %s",
+  "ctt-health-display.config.server.info.init_hp_values": "\u00a78Initial HP list: %s",
+  "ctt-health-display.config.server.info.suspect_victims": "\u00a78Suspect victims: %s"
+}
