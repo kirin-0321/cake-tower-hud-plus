@@ -32,8 +32,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *       {@link AttackerProbe#record} —— 攻击者归属诊断</li>
  *   <li>任何 criterion = {@code minecraft.custom:minecraft.damage_dealt} 的 objective（v6.0.5）
  *       → {@link PlayerHitLog#record} —— 近战 vanilla hit 信号（70+ 种武器自动覆盖）</li>
- *   <li>任何 criterion = {@code minecraft.used:minecraft.carrot_on_a_stick} 的 objective（v6.0.5）
- *       → {@link PlayerFireLog#record} —— 右键开火信号（远程武器兜底）</li>
+ *   <li>任何 criterion = {@code minecraft.used:minecraft.carrot_on_a_stick} 或
+ *       {@code minecraft.dropped:minecraft.carrot_on_a_stick} 的 objective（v6.0.5 / v6.7.8）
+ *       → {@link PlayerFireLog#record} —— 右键 / Q 丢弃开火信号（远程武器兜底，含按 Q 触发的武器）</li>
  * </ul>
  *
  * <p>为什么 v6.0.5 不再硬编码 objective 名字？
@@ -103,7 +104,11 @@ public class ScoreboardUpdateMixin {
             return;
         }
 
-        // 4) RightClick (carrot_on_a_stick 使用) → PlayerFireLog
+        // 4) RightClick (carrot_on_a_stick 使用) / DropCarrot (carrot_on_a_stick 丢弃) → PlayerFireLog
+        //    v6.7.8 · 把 minecraft.dropped:minecraft.carrot_on_a_stick 也接进来——
+        //    地图里部分武器是按 Q 丢弃 carrot_on_a_stick 触发的（不是右键），
+        //    没有这条信号时它们会全部掉到 L9-NONE 或被 L8 误归属。
+        //    isRightClickStat 内部已合并 used / dropped 两种 criterion，归属层不区分。
         if (PlayerFireLog.isRightClickStat(objective)) {
             PlayerFireLog.record(CttStatsServer.getServer(), holder, objective, value,
                     DamageProbe.currentTick());

@@ -2,6 +2,10 @@ plugins {
     id 'fabric-loom' version '1.9-SNAPSHOT'
 }
 
+// 直接运行 `gradlew`（不带参数）= `gradlew build`。
+// build 已经 finalizedBy 'deployToMods'，所以仍然会自动复制 jar 到 mods/。
+defaultTasks 'build'
+
 version = project.mod_version
 group = project.maven_group
 
@@ -82,8 +86,26 @@ tasks.register('deployToMods', Copy) {
     }
 }
 
+// v6.7.11 · 额外二级部署目标：把同一份 jar 再复制一份到另一个整合包的 mods/。
+// 设计原则（与主 deployToMods 区分）：
+//   * 只复制，不清理旧 jar —— 该整合包目录可能由其他启动器/更新器维护，
+//     mod 自己删别人的 jar 不安全；新版本以更高文件名共存即可，
+//     Fabric Loader 启动时按版本号偏好最新一个。
+//   * 目标目录不存在时 Copy 任务会自动创建。
+//   * 文件被占用（游戏开着）时 Copy 任务会失败 —— 由 Gradle 默认行为处理，关游戏重 build 即可。
+tasks.register('deployToSecondaryMods', Copy) {
+    dependsOn remapJar
+    from(remapJar.archiveFile)
+    into("E:/Cake Team Towers v3.4.0.10/.minecraft/versions/Cake Team Towers v3.4.0.10/mods")
+
+    doLast {
+        def newJarName = remapJar.archiveFile.get().asFile.name
+        logger.lifecycle("[deployToSecondaryMods] 复制 ${newJarName} 到二级 mods/ 完成")
+    }
+}
+
 tasks.named('build') {
-    finalizedBy 'deployToMods'
+    finalizedBy 'deployToMods', 'deployToSecondaryMods'
 }
 
 // remapJar 真正产出新 jar 后（非 UP-TO-DATE），把 gradle.properties 的 mod_version 补丁号 +1。

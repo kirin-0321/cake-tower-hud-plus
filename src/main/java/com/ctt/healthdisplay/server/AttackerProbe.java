@@ -374,23 +374,36 @@ public final class AttackerProbe {
     /** 兼容旧入口：不强制 layer，走完整 attribute 流程。 */
     public static void recordFromDamageShower(MinecraftServer server, Entity victim,
                                               ServerWorld victimWorld, int damage, long tick) {
-        recordFromDamageShower(server, victim, victimWorld, damage, tick, null);
+        recordFromDamageShower(server, victim, victimWorld, damage, tick, null, null);
     }
 
-    /**
-     * v6.5.2 · 主入口（带 forceLayer）。
-     *
-     * @param forceLayer 非 null 时直接跳过归属逻辑，强制路由到该层（必须是 L9 子层）。
-     *                   用于：
-     *                   <ul>
-     *                     <li>{@link com.ctt.healthdisplay.server.mixin.ScoreboardUpdateMixin}
-     *                         RedHearts delta 命中黑名单 → {@link Layer#L9_FILTER}</li>
-     *                     <li>{@link DamageProbe} 检测到绿色回血粒子 → {@link Layer#L9_HEAL}</li>
-     *                   </ul>
-     */
+    /** v6.5.2 兼容入口：带 forceLayer 但不带 reason。 */
     public static void recordFromDamageShower(MinecraftServer server, Entity victim,
                                               ServerWorld victimWorld, int damage, long tick,
                                               Layer forceLayer) {
+        recordFromDamageShower(server, victim, victimWorld, damage, tick, forceLayer, null);
+    }
+
+    /**
+     * v6.5.2 · 主入口（带 forceLayer）；v6.7.4 · 新增 {@code filterReasonTag} 参数。
+     *
+     * @param forceLayer      非 null 时直接跳过归属逻辑，强制路由到该层（必须是 L9 子层）。
+     *                        用于：
+     *                        <ul>
+     *                          <li>{@link com.ctt.healthdisplay.server.mixin.ScoreboardUpdateMixin}
+     *                              RedHearts delta 命中黑名单 → {@link Layer#L9_FILTER}</li>
+     *                          <li>{@link DamageProbe} 检测到绿色回血粒子 → {@link Layer#L9_HEAL}</li>
+     *                        </ul>
+     * @param filterReasonTag {@code forceLayer == L9_FILTER} 时由
+     *                        {@link com.ctt.healthdisplay.server.filter.FilterReason#shortTag()} 传入
+     *                        （如 {@code "low-noise"} / {@code "init-hp-jump"} / {@code "suspect-tag"} / ...）；
+     *                        其它 layer 传 {@code null}。本字段会拼接进 detail 字符串，让聊天广播
+     *                        与日志能直接看出哪条规则命中——v6.7.4 之前无此暴露，所有 L9-FILT 看起来
+     *                        都一样导致诊断困难。
+     */
+    public static void recordFromDamageShower(MinecraftServer server, Entity victim,
+                                              ServerWorld victimWorld, int damage, long tick,
+                                              Layer forceLayer, String filterReasonTag) {
         if (server == null || victim == null || victimWorld == null) return;
         if (damage <= 0) return;
         if (!victim.getCommandTags().contains("E")) return;
@@ -417,11 +430,19 @@ public final class AttackerProbe {
             //        此处统一打 victim name 让聊天栏一眼看出"哪个怪触发了过滤"。
             String label = forceLayer == Layer.L9_FILTER ? "<filtered>"
                     : forceLayer == Layer.L9_HEAL ? "<heal>" : "<unattributed>";
-            String detail = forceLayer == Layer.L9_FILTER
-                    ? String.format("filtered value=%d victim=%s", damage, victimName)
-                    : forceLayer == Layer.L9_HEAL
-                        ? "heal-particle"
-                        : "forced";
+            String detail;
+            if (forceLayer == Layer.L9_FILTER) {
+                if (filterReasonTag != null && !filterReasonTag.isEmpty()) {
+                    detail = String.format("reason=%s value=%d victim=%s",
+                            filterReasonTag, damage, victimName);
+                } else {
+                    detail = String.format("filtered value=%d victim=%s", damage, victimName);
+                }
+            } else if (forceLayer == Layer.L9_HEAL) {
+                detail = "heal-particle";
+            } else {
+                detail = "forced";
+            }
             r = new Result(forceLayer, null, label, detail);
             displayObjective = ALL_DMG_OBJECTIVE;
             suffix = forceLayer.shortTag();

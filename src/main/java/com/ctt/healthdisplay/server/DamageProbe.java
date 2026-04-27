@@ -1,6 +1,9 @@
 package com.ctt.healthdisplay.server;
 
 import com.ctt.healthdisplay.config.ServerConfig;
+import com.ctt.healthdisplay.server.filter.DamageFilterPipeline;
+import com.ctt.healthdisplay.server.filter.FilterDecision;
+import com.ctt.healthdisplay.server.filter.FilterReason;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.registry.Registries;
@@ -87,58 +90,39 @@ public final class DamageProbe {
     private static final AtomicLong healFilteredCount = new AtomicLong();
     public static long getHealFilteredCount() { return healFilteredCount.get(); }
 
-    /** v6.5.2 · 诊断：已识别的"初始化血量跳变"黑名单事件数（路由到 L9_FILTER）。 */
+    /**
+     * v6.5.2 · 诊断：已识别的"初始化血量跳变"黑名单事件数（路由到 L9_FILTER）。
+     *
+     * <p>v6.7.0 起为兼容字段：仍然在 {@link #recordFromRedHearts} 命中 init-hp-jump
+     * 时累加，便于 {@link com.ctt.healthdisplay.server.StatsSnapshotBroadcaster} /
+     * config screen 沿用旧 getter；新代码请改读
+     * {@link com.ctt.healthdisplay.server.filter.FilterDiagReport#getEventCount(FilterReason)}。
+     */
     private static final AtomicLong initHpJumpFilteredCount = new AtomicLong();
     public static long getInitHpJumpFilteredCount() { return initHpJumpFilteredCount.get(); }
 
     /**
      * v6.5.2 · 是否为"怪物初始化 / 形态切换"造成的假伤害值。
      *
-     * <p>地图 {@code enemies/*.mcfunction} 给某些怪物 {@code set @s RedHearts <N>}
-     * 初始化或形态切换时，{@link ScoreDeltaTracker} 计算到的 delta 是负的，会被
-     * 误判为玩家造成的"瞬间巨额伤害"。命中 {@link ServerConfig#initHpJumpValues}
-     * 列表的 damage 值会被强制路由到 {@link AttackerProbe.Layer#L9_FILTER}。
-     *
-     * @see ServerConfig#filterInitHpJumps
-     * @see ServerConfig#initHpJumpValues
+     * @deprecated v6.7.0 起改用
+     *     {@link com.ctt.healthdisplay.server.filter.DamageFilterPipeline#isInitHpJump(int)}。
+     *     本方法保留为转发壳，便于第三方代码 / 测试平滑迁移。
      */
+    @Deprecated
     public static boolean isInitHpJump(int damage) {
-        if (!ServerConfig.INSTANCE.filterInitHpJumps) return false;
-        int[] vals = ServerConfig.INSTANCE.initHpJumpValues;
-        if (vals == null || vals.length == 0) return false;
-        for (int v : vals) {
-            if (v == damage) return true;
-        }
-        return false;
+        return DamageFilterPipeline.isInitHpJump(damage);
     }
 
     /**
      * v6.5.8 · 是否为"特定怪物 + 单次大额伤害"组合的伪伤害。
      *
-     * <p>区别于 {@link #isInitHpJump(int)}（只能拦固定值），本规则按
-     * <ul>
-     *   <li>victim 显示名子串匹配（{@link ServerConfig#suspectVictims}）</li>
-     *   <li>本次伤害 ≥ 阈值（{@link ServerConfig#suspectVictimDamageThreshold}）</li>
-     * </ul>
-     * 双条件命中时认定为剧情 set 假伤害（如幽匿骷髅 / 幽匿僵尸状态切换时
-     * RedHearts 被脚本 set 到低值产生的负 delta 970 / 920 / 856 等浮动值）。
-     *
-     * @param victim 受害者实体（不能为 null；调用方已确保）
-     * @param damage 本次记录的伤害值（>0）
-     * @return 命中 → true（应该路由到 L9_FILTER）
+     * @deprecated v6.7.0 起改用
+     *     {@link com.ctt.healthdisplay.server.filter.DamageFilterPipeline#isSuspectVictim(Entity, int)}。
+     *     本方法保留为转发壳，便于第三方代码 / 测试平滑迁移。
      */
+    @Deprecated
     public static boolean isSuspectVictim(Entity victim, int damage) {
-        ServerConfig cfg = ServerConfig.INSTANCE;
-        if (!cfg.filterSuspectVictims) return false;
-        if (damage < cfg.suspectVictimDamageThreshold) return false;
-        String[] keywords = cfg.suspectVictims;
-        if (keywords == null || keywords.length == 0) return false;
-        String name = victim.getName().getString();
-        if (name == null || name.isEmpty()) return false;
-        for (String kw : keywords) {
-            if (kw != null && !kw.isEmpty() && name.contains(kw)) return true;
-        }
-        return false;
+        return DamageFilterPipeline.isSuspectVictim(victim, damage);
     }
 
     private static long tickCounter = 0;
@@ -248,6 +232,11 @@ public final class DamageProbe {
      * 强制路由到 {@link AttackerProbe.Layer#L9_FILTER}，不进玩家账户、不进 grandTotal、
      * 不进 sessionTotal——它们本质是怪物初始化 / 形态切换造成的负 delta 假伤害，
      * 不是任何玩家的真实输出。
+     *
+     * <p>v6.7.0 · 全部"前置过滤"逻辑（含 init-hp-jump / suspect-victim / low-noise）
+     * 收编到 {@link DamageFilterPipeline#applyFilters}，本方法只读它返回的 {@link FilterDecision}
+     * 决定 forceLayer 与 sessionTotal 累加策略。{@link com.ctt.healthdisplay.server.filter.FilterDiagReport}
+     * 由 pipeline 内部维护。
      */
     public static void recordFromRedHearts(MinecraftServer server, ScoreHolder holder, int damage,
                                             long tick) {
@@ -271,13 +260,12 @@ public final class DamageProbe {
         }
         if (victim == null) return;
 
-        // v6.5.2 · 固定值黑名单（1000/10000/100000）→ L9_FILTER。
-        // v6.5.8 · 特定 victim + 大额阈值（如幽匿骷髅/幽匿僵尸 ≥800）→ L9_FILTER。
-        boolean blacklisted = isInitHpJump(damage);
-        boolean suspectMatched = !blacklisted && isSuspectVictim(victim, damage);
-        boolean filtered = blacklisted || suspectMatched;
+        // v6.7.0 · 统一过滤入口：G_low → G3 (init-hp-jump) → G4 (suspect-victim) → ...
+        FilterDecision decision = DamageFilterPipeline.applyFilters(victim, damage, tick);
+        boolean filtered = decision.filtered();
         AttackerProbe.Layer forceLayer = filtered ? AttackerProbe.Layer.L9_FILTER : null;
-        if (filtered) {
+        if (filtered && decision.reason() == FilterReason.INIT_HP_JUMP) {
+            // 兼容旧诊断 getter（v6.6.x StatsSnapshotBroadcaster 仍读 initHpJumpFilteredCount）。
             initHpJumpFilteredCount.incrementAndGet();
         }
 
@@ -291,20 +279,22 @@ public final class DamageProbe {
             } while (!sessionMaxHit.compareAndSet(cur, damage));
         }
 
-        String vName = victim.getName().getString();
-        String vType = Registries.ENTITY_TYPE.getId(victim.getType()).toString();
-        String reason = blacklisted ? " [L9-FILTER:init-hp-jump]"
-                : suspectMatched     ? " [L9-FILTER:suspect-victim]"
-                : "";
         // v6.6.1 hotfix · 高频伤害事件日志降级为 DEBUG。INFO 阈值下 SLF4J 直接短路，
         // 避免 boss / 高频 DoT 怪每 tick 几十行 RedHearts 日志拖垮 TPS。
         if (LOGGER.isDebugEnabled()) {
+            String vName = victim.getName().getString();
+            String vType = Registries.ENTITY_TYPE.getId(victim.getType()).toString();
+            String reason = filtered
+                    ? " [L9-FILT:" + decision.reason().shortTag() + "]"
+                    : "";
             LOGGER.debug("[CTT Stats] (RedHearts) tick={} dmg={} holder={} type={} uuid={}{}",
                     tick, damage, vName, vType, victim.getUuidAsString(), reason);
         }
 
         if (victim.getCommandTags().contains("E")) {
-            AttackerProbe.recordFromDamageShower(server, victim, foundWorld, damage, tick, forceLayer);
+            String reasonTag = filtered ? decision.reason().shortTag() : null;
+            AttackerProbe.recordFromDamageShower(server, victim, foundWorld, damage, tick,
+                    forceLayer, reasonTag);
         }
     }
 

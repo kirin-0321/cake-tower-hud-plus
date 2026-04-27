@@ -104,6 +104,17 @@ public final class StageBoundaryDispatcher {
     private static volatile int currentGameId = 0;
     /** 上一次 tick 见到的 GameID，用于 diff 触发 onSessionChange。 */
     private static volatile int lastSeenGameId = 0;
+    /**
+     * v6.7.3 · 最后一次 GameID 跳变发生的 server tick（来自 {@link DamageProbe#currentTick()}）。
+     *
+     * <p>用于 {@link com.ctt.healthdisplay.server.filter.DamageFilterPipeline} 的 G2 子规则
+     * {@code session-boundary}：{@code currentTick - lastGameIdChangeTick < cfg.sessionBoundaryGuardTicks}
+     * 时本 tick 的伤害事件被视为局结束 / 新局开始的清场期，整批过滤。
+     *
+     * <p>初值 {@link Long#MIN_VALUE} 表示从未跳变过——任何当前 tick 都满足
+     * {@code currentTick - MIN_VALUE} 远大于守卫窗口，自然不会触发 session-boundary 误判。
+     */
+    private static volatile long lastGameIdChangeTick = Long.MIN_VALUE;
 
     /** 单玩家的 stage 缓存项。 */
     private record PlayerStage(StageKey stageKey, boolean collecting, int kindOrdinal) {}
@@ -450,6 +461,11 @@ public final class StageBoundaryDispatcher {
         currentGameId = newGameId;
         int prev = lastSeenGameId;
         if (newGameId != prev) {
+            // 任何 GameID 变化都登记为"session 边界"——含 0 → 真值的初始化跳变与 真值 → 真值 跳变；
+            // G2 session-boundary 子规则需要拦下这两类切换瞬间的清场伤害。
+            // 注：DamageProbe.currentTick() 与 server tick 同步，由 CttStatsServer 主 tick hook 维护。
+            lastGameIdChangeTick = DamageProbe.currentTick();
+
             // 仅在"已经见过非 0 的旧值"时归档：服务器启动从 0 → 真值不算 session 切换。
             if (prev > 0 && newGameId > 0) {
                 LOGGER.info("[CTT BD] session CHANGE detected (#CTT GameID {} -> {})", prev, newGameId);
@@ -459,6 +475,18 @@ public final class StageBoundaryDispatcher {
             }
             lastSeenGameId = newGameId;
         }
+    }
+
+    /**
+     * v6.7.3 · 返回最后一次 {@code #CTT GameID} 跳变发生的 server tick。
+     *
+     * <p>{@link com.ctt.healthdisplay.server.filter.DamageFilterPipeline} G2 子规则用：
+     * {@code currentTick - lastGameIdChangeTick() < cfg.sessionBoundaryGuardTicks} 时过滤本次伤害。
+     *
+     * @return 最后一次跳变的 tick；从未跳变过返回 {@link Long#MIN_VALUE}
+     */
+    public static long lastGameIdChangeTick() {
+        return lastGameIdChangeTick;
     }
 
     /** 当前 sessionId 的字符串形式（与 {@link StageKey#gameId()} 同步）；0 → null。 */

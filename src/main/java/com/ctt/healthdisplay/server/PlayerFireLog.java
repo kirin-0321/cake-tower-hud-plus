@@ -39,6 +39,19 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  * <p>整个过程中 vanilla {@link net.minecraft.entity.LivingEntity#damage} 不会触发 →
  * {@link PlayerHitLog}（damage_dealt stat）无事件。唯一能把"是谁开的枪"沉淀下来的就是这条右键信号。
  *
+ * <h2>v6.7.8 · Q 丢弃信号</h2>
+ * <p>地图里还有一类武器/法器并不是右键触发，而是按 <b>Q（丢弃键）</b> 把 carrot_on_a_stick
+ * "扔出去"瞬间触发——典型表现是数据包用
+ * {@code execute as @a[scores={DropCarrot=1..}]} 启动武器函数，并立刻把丢出的物品 clear
+ * 再 give 回主手。对应 vanilla criterion 是
+ * {@code minecraft.dropped:minecraft.carrot_on_a_stick}：
+ * 玩家每丢出一根 carrot_on_a_stick 时该 stat += 1。
+ *
+ * <p>没有这条信号，丢弃式武器的伤害事件会全部掉到 L9-NONE（或被 L8 续归属误派给"刚好打过这个 victim"
+ * 的另一名玩家）。本类把 dropped 信号同样写入 {@link FireKind#CARROT} 通道——对归属层而言，
+ * "右键开火"和"丢弃开火"语义一致：都是"该玩家在过去 N tick 内主动触发了一次自定义武器"，
+ * L1 / L6 等无需区分。
+ *
  * <h2>用途（AttackerProbe L4）</h2>
  * <p>当 {@code *DMG} 写入 victim、L1/L2/L3 都查不到攻击者时，回看最近 20 tick 内
  * 开过火的玩家，按"距离 victim 由近到远"加权，取最高分。
@@ -49,6 +62,16 @@ public final class PlayerFireLog {
 
     /** {@link ScoreboardCriterion#getName()} 对 carrot-on-a-stick 使用 objective 的返回值。 */
     public static final String USED_CARROT_CRITERION = "minecraft.used:minecraft.carrot_on_a_stick";
+    /**
+     * v6.7.8 · carrot-on-a-stick "被丢弃"信号 (按 Q 触发的武器)。
+     * 地图常见用法：
+     * <pre>
+     *   scoreboard objectives add DropCarrot minecraft.dropped:minecraft.carrot_on_a_stick
+     *   execute as @a[scores={DropCarrot=1..}] run function ...weapon trigger...
+     * </pre>
+     * 对归属算法而言与 {@link #USED_CARROT_CRITERION} 同义，统一走 {@link FireKind#CARROT}。
+     */
+    public static final String DROPPED_CARROT_CRITERION = "minecraft.dropped:minecraft.carrot_on_a_stick";
     /** v6.3.7 · 弓释放：玩家每射出一箭就 +1（需要地图注册了 {@code minecraft.used:minecraft.bow} 类 objective）。 */
     public static final String USED_BOW_CRITERION = "minecraft.used:minecraft.bow";
     public static final String USED_CROSSBOW_CRITERION = "minecraft.used:minecraft.crossbow";
@@ -88,9 +111,17 @@ public final class PlayerFireLog {
 
     private PlayerFireLog() {}
 
-    /** 判断 objective 是否是 carrot 右键使用 stat。 */
+    /**
+     * 判断 objective 是否是 carrot "右键使用 / Q 丢弃"任意一类触发 stat。
+     *
+     * <p>v6.7.8 起：除原来的 {@link #USED_CARROT_CRITERION}，额外接受
+     * {@link #DROPPED_CARROT_CRITERION}——支持地图里"按 Q 丢弃 carrot_on_a_stick"触发的武器，
+     * 防止这类武器伤害落入 L9-NONE。两者都由 {@link #record} 写成 {@link FireKind#CARROT}
+     * 事件，归属层 (L1 / L6) 不区分。
+     */
     public static boolean isRightClickStat(ScoreboardObjective objective) {
-        return USED_CARROT_CRITERION.equals(objective.getCriterion().getName());
+        String n = objective.getCriterion().getName();
+        return USED_CARROT_CRITERION.equals(n) || DROPPED_CARROT_CRITERION.equals(n);
     }
 
     /** v6.3.7 · 判断 objective 是否是弓/弩/三叉戟发射 stat。 */

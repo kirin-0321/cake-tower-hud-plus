@@ -244,7 +244,9 @@
 
 - `FEATURES.md`：全量按版本迭代的功能/实现清单。  
 - `V6_STATS_DESIGN.md` / `V6_STATS_STATUS.md` / `V6_STATS_DEV_PLAN.md`：统计系统设计、进度、里程碑。  
-- `MAP_DATAPACK_ANALYSIS.md`：地图计分板、触发器、与 mod 的对接点。  
+- `MAP_DATAPACK_REFERENCE.md`：**地图主题式速查参考**——按"心数 / 伤害 / Stage / 触发器 / Tag"等主题组织当前事实清单（双端 mod 优先看）。
+- `CLIENT_SIDE_DATA_REFERENCE.md`：**纯客户端可读数据参考**——原版服务端环境下，客户端通过 vanilla S2C 协议能读到什么、读不到什么、如何重建关键功能（纯客户端 mod 必读）。
+- `MAP_DATAPACK_ANALYSIS.md`：按时间线写的地图侧契约演进史（v6.0.0 → v6.0.5），保留作为决策上下文；与上述两份冲突时以新文档为准。  
 
 ---
 
