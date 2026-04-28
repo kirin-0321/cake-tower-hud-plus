@@ -443,6 +443,11 @@ public final class ClientDamageProbe {
      *
      * <p>v7.0.8 起增加 {@code taken=N} 提示：dealt=0 但 taken>0 时，意味着探针
      * 数据通路 OK，只是用户暂时没打到怪——这是正常情况，不是 bug。
+     *
+     * <p>v7.1.4 · <b>受 {@link ModConfig#clientDamageDebugChat} 守卫</b>：
+     * 否则朋友拿到 mod 进游戏后，"还没打第一发"+"场上有 text_display"=每 5s
+     * 强行刷一行 {@code [CDP 诊断] ...}，导致用户误以为聊天默认是开的。
+     * 关闭聊天广播后仍写 LOGGER（latest.log 可查），调试链路不受影响。
      */
     private void maybeEmitDiagnostics(MinecraftClient client, boolean objMissing) {
         if (globalTotal > 0L) return;                       // dealt 已经在累加，静默
@@ -460,7 +465,10 @@ public final class ClientDamageProbe {
                 diagTextHitCount, diagTextMissCount,
                 objMissing ? " | obj=MISSING" : "",
                 takenInfo);
-        client.player.sendMessage(Text.literal(msg), false);
+        // v7.1.4 · 默认仅写日志；开启"聊天栏粒子流水"后才发到聊天。
+        if (ModConfig.INSTANCE.clientDamageDebugChat) {
+            client.player.sendMessage(Text.literal(msg), false);
+        }
         LOGGER.info(msg);
     }
 
