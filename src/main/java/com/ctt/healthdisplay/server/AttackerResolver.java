@@ -14,6 +14,9 @@ import net.minecraft.util.math.Vec3d;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * v6.0.7 · 攻击者身份反查（marker / player 拆分版）。
@@ -72,9 +75,44 @@ public final class AttackerResolver {
      * —— 不含玩家实体。
      *
      * <p>返回列表按距离升序；空列表表示未找到。
+     *
+     * <p><b>v8.0.0 性能：per-tick 缓存</b>。同 tick 内同 (victim, radius) 的扫描结果
+     * 共享同一 list（CTT boss 一击多伤害类型，PhysicalDMG/FireDMG/ImpactDMG 同 tick 反复触发
+     * 同一 victim 的归属链 → 节省 N-1 次 box scan）。
+     *
+     * <p>缓存安全前提：<i>同 tick 内 victim 周围的候选实体集合不变</i>。这是合理假设：
+     * <ul>
+     *   <li>vanilla 实体移动在 tick 开头集中跑，attribute chain 是 mid-tick</li>
+     *   <li>mcfunction 同 tick 内新 summon 的 DamageShower/E 标记已被 scan 的 predicate 过滤</li>
+     *   <li>同 tick 内 PlayerID score 的写入不会改变扫到的实体集合，只可能改其 pid 值
+     *       —— 而 pid 值是在 cache miss 时一次性读取，cache hit 时不再重新读</li>
+     * </ul>
+     *
+     * <p><b>调用约定：返回的 list 必须只读</b>（缓存共享同一 ArrayList 引用）。
      */
     public static List<Candidate> scanMarkers(ServerWorld world, Entity victim, double radius) {
-        return scan(world, victim, victim.getPos(), radius, /*includePlayers=*/false, /*includeNonPlayers=*/true);
+        long tick = DamageProbe.currentTick();
+        invalidateCacheIfStale(tick);
+        CacheKey key = new CacheKey(victim.getUuid(), radius);
+        List<Candidate> cached = MARKER_CACHE.get(key);
+        if (cached != null) return cached;
+
+        List<Candidate> result = scan(world, victim, victim.getPos(), radius,
+                /*includePlayers=*/false, /*includeNonPlayers=*/true);
+        MARKER_CACHE.put(key, result);
+        return result;
+    }
+
+    // -------- per-tick scan cache（仅 scanMarkers 使用） --------
+    private record CacheKey(UUID victimUuid, double radius) {}
+    private static final Map<CacheKey, List<Candidate>> MARKER_CACHE = new ConcurrentHashMap<>();
+    private static volatile long cacheTick = -1L;
+
+    private static void invalidateCacheIfStale(long tick) {
+        if (tick != cacheTick) {
+            MARKER_CACHE.clear();
+            cacheTick = tick;
+        }
     }
 
     /**

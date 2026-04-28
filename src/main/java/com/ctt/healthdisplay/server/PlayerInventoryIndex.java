@@ -3,6 +3,7 @@ package com.ctt.healthdisplay.server;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.NbtComponent;
 import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
@@ -14,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,14 +35,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>{@link Snapshot#mainHand} —— 主手当前持有的 custom_data key 集合。
  *       用于 {@link WeaponDamageRegistry.Kind#WEAPON} 类武器匹配（必须主手持有才能攻击）。</li>
- *   <li>{@link Snapshot#inventoryAny} —— 主手 + 快捷栏 9 + 主背包 27 = 37 格内所有 key。
+ *   <li>{@link Snapshot#inventoryAny} —— 主手 + 快捷栏 = 9 格内所有 key。
  *       用于 {@link WeaponDamageRegistry.Kind#SUMMON} 类召唤物匹配
- *       （召唤物放背包里也能持续攻击，不必在主手）。</li>
+ *       （召唤物放快捷栏里也能持续攻击，不必在主手）。</li>
  * </ul>
  *
- * <h2>为什么忽略副手</h2>
- * <p>地图的自定义武器体系靠 {@code SelectedItem} NBT 识别，SelectedItem 只读主手。
- * 副手的 carrot_on_a_stick 不会触发任何武器函数 —— 副手忽略。
+ * <h2>为什么忽略副手 / 主背包 / 护甲</h2>
+ * <p>地图的自定义武器体系靠 {@code SelectedItem} NBT 识别，SelectedItem 只读主手；
+ * 召唤物函数同样只对玩家"可即时使用"的位置生效（快捷栏）。把 9~35 主背包纳入会放大
+ * 误归属（玩家把武器塞背包里也算他干的），且每 tick 多扫 27 格 NBT 解析没必要。
+ * 副手的 carrot_on_a_stick 不会触发任何武器函数 —— 一并忽略。
  */
 public final class PlayerInventoryIndex {
     private static final Logger LOGGER = LoggerFactory.getLogger("ctt-inv-idx");
@@ -52,7 +56,7 @@ public final class PlayerInventoryIndex {
      * 一位玩家的快照（不可变视图 → 读无需锁）。
      *
      * @param mainHand           主手当前持有的 custom_data key 集合（去重）
-     * @param inventoryAny       主手 + 快捷栏 + 主背包 37 格内的所有 key 集合（去重）
+     * @param inventoryAny       主手 + 快捷栏 = 9 格内的所有 key 集合（去重）
      * @param summonItemCount    召唤物格子数（按"格"计数，不去重）——
      *                           同一玩家不同格子里的召唤物合计，用于 L8b 加权均分
      * @param mainHandItemId     v6.3.4 · 主手 vanilla item id（形如 {@code "minecraft:bow"}，空手为 null）。
@@ -84,6 +88,52 @@ public final class PlayerInventoryIndex {
     private static final Map<UUID, Snapshot> snapshots = new ConcurrentHashMap<>();
     private static volatile long lastRefreshTick = -1L;
 
+    /** v8.0.0 性能：扫描的槽位数 = 主手所在的快捷栏 0~8。 */
+    private static final int TRACKED_SLOTS = 9;
+
+    /**
+     * v8.0.0 · 玩家上一次扫描的"槽位指纹"。
+     *
+     * <p>tickRefresh 时如果指纹没变（98%+ 情况：玩家不动手），直接复用上次的
+     * {@link Snapshot}，跳过 9 次 {@code NbtComponent.copyNbt()} + key 解析。
+     *
+     * <p>判等策略（按命中率排序）：
+     * <ol>
+     *   <li>{@code selectedSlot} 变化 → 失效（主手 key 集合可能彻底变）</li>
+     *   <li>每格 {@code Item} 引用变化 → 失效（玩家拿了/丢了/换了）</li>
+     *   <li>每格 {@code NbtComponent} 引用变化 → 大概率失效，回退 equals 兜底
+     *       （vanilla 内部更新 component 会换新引用，引用比对是 99% 命中的快路径）</li>
+     * </ol>
+     */
+    private static final class SlotFingerprint {
+        final Item[] items = new Item[TRACKED_SLOTS];
+        final NbtComponent[] cds = new NbtComponent[TRACKED_SLOTS];
+        int selectedSlot = -1;
+
+        boolean matches(PlayerInventory inv) {
+            if (selectedSlot != inv.selectedSlot) return false;
+            for (int i = 0; i < TRACKED_SLOTS; i++) {
+                ItemStack s = inv.getStack(i);
+                Item it = s.isEmpty() ? null : s.getItem();
+                if (items[i] != it) return false;
+                NbtComponent cd = s.isEmpty() ? null : s.get(DataComponentTypes.CUSTOM_DATA);
+                if (cds[i] != cd && !Objects.equals(cds[i], cd)) return false;
+            }
+            return true;
+        }
+
+        void capture(PlayerInventory inv) {
+            selectedSlot = inv.selectedSlot;
+            for (int i = 0; i < TRACKED_SLOTS; i++) {
+                ItemStack s = inv.getStack(i);
+                items[i] = s.isEmpty() ? null : s.getItem();
+                cds[i] = s.isEmpty() ? null : s.get(DataComponentTypes.CUSTOM_DATA);
+            }
+        }
+    }
+
+    private static final Map<UUID, SlotFingerprint> fingerprints = new ConcurrentHashMap<>();
+
     private PlayerInventoryIndex() {}
 
     /**
@@ -106,24 +156,33 @@ public final class PlayerInventoryIndex {
 
         // GC 已下线的玩家
         snapshots.keySet().retainAll(onlineUuids);
+        fingerprints.keySet().retainAll(onlineUuids);
     }
 
     private static Snapshot buildSnapshot(ServerPlayerEntity sp, long tick) {
         PlayerInventory inv = sp.getInventory();
-        ItemStack mainHandStack = sp.getMainHandStack();
+        UUID uuid = sp.getUuid();
 
+        // ───── v8.0.0 快路径：指纹未变 → 复用上次 Snapshot（跳过 9 次 NBT 解析）
+        SlotFingerprint fp = fingerprints.get(uuid);
+        Snapshot prev = snapshots.get(uuid);
+        if (fp != null && prev != null && fp.matches(inv)) {
+            return prev;
+        }
+
+        // ───── 慢路径：构造新 Snapshot
+        ItemStack mainHandStack = sp.getMainHandStack();
         Set<String> mainHand = extractKeys(mainHandStack);
         String mainHandItemId = mainHandStack.isEmpty() ? null
                 : net.minecraft.registry.Registries.ITEM.getId(mainHandStack.getItem()).toString();
-        int summonCount = 0;
 
-        Set<String> any = new HashSet<>();
-        any.addAll(mainHand);
-        summonCount += countSummonKeys(mainHand);
+        int summonCount = countSummonKeys(mainHand);
+        Set<String> any = new HashSet<>(mainHand);
 
-        // 快捷栏 0~8
-        for (int i = 0; i <= 8; i++) {
-            if (i == sp.getInventory().selectedSlot) continue; // 主手已处理
+        // 快捷栏 0~8（不看主背包 9~35 / 副手 40 / 护甲 36~39）
+        // 地图武器识别只看 SelectedItem（主手）；召唤物函数也只对快捷栏即时位生效。
+        for (int i = 0; i < TRACKED_SLOTS; i++) {
+            if (i == inv.selectedSlot) continue; // 主手已处理
             ItemStack s = inv.getStack(i);
             if (s.isEmpty()) continue;
             Set<String> k = extractKeys(s);
@@ -131,24 +190,23 @@ public final class PlayerInventoryIndex {
             any.addAll(k);
             summonCount += countSummonKeys(k);
         }
-        // 主背包 9~35
-        for (int i = 9; i <= 35; i++) {
-            ItemStack s = inv.getStack(i);
-            if (s.isEmpty()) continue;
-            Set<String> k = extractKeys(s);
-            if (k.isEmpty()) continue;
-            any.addAll(k);
-            summonCount += countSummonKeys(k);
-        }
-        // 副手（40）与护甲（36~39）不看 —— 地图武器识别只读主手 SelectedItem
 
-        return new Snapshot(
+        Snapshot snap = new Snapshot(
                 mainHand.isEmpty() ? Set.of() : Collections.unmodifiableSet(mainHand),
                 any.isEmpty() ? Set.of() : Collections.unmodifiableSet(any),
                 summonCount,
                 mainHandItemId,
                 tick
         );
+
+        // 同步刷新指纹（复用对象，避免每 5 tick 分配一个 SlotFingerprint）
+        if (fp == null) {
+            fp = new SlotFingerprint();
+            fingerprints.put(uuid, fp);
+        }
+        fp.capture(inv);
+
+        return snap;
     }
 
     /**

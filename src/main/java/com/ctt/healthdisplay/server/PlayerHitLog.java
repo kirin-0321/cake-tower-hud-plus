@@ -145,6 +145,28 @@ public final class PlayerHitLog {
     /** 查询结果条目 —— 扁平化方便调用方消费。 */
     public record PlayerHit(UUID playerUuid, long tick, String weaponId, int delta) {}
 
+    /**
+     * v8.0.0 性能：按 player uuid 直查"最近一次 hit tick"。
+     *
+     * <p>L1 归属用：从 {@link AttackerProbe#latestFireOrHitTick} 调用，
+     * 替换原本"全表 query 再过滤本玩家"的 O(玩家数 × 全部 hit) 路径，降到 O(本玩家 hit)。
+     *
+     * <p>仿照 {@link PlayerFireLog#latestTickOf} 的实现：
+     * deque 按 tick 升序（{@code addLast} 写入），从尾部反向扫到第一个 ≤ {@code toTick} 的事件，
+     * 若 < {@code fromTick} 则提前 break。返回 {@code null} 表示窗口内无记录。
+     */
+    public static Long latestTickOf(UUID playerUuid, long fromTick, long toTick) {
+        Deque<HitEvent> deque = perPlayer.get(playerUuid);
+        if (deque == null || deque.isEmpty()) return null;
+        for (var it = deque.descendingIterator(); it.hasNext(); ) {
+            HitEvent ev = it.next();
+            if (ev.tick() > toTick) continue;
+            if (ev.tick() < fromTick) break;
+            return ev.tick();
+        }
+        return null;
+    }
+
     /** 每 tick 末批量 GC，防止离线玩家的数据堆积。 */
     public static void gcTick(long currentTick) {
         perPlayer.entrySet().removeIf(e -> {

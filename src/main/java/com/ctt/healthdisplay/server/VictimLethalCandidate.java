@@ -1,5 +1,8 @@
 package com.ctt.healthdisplay.server;
 
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.world.World;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -56,9 +59,13 @@ public final class VictimLethalCandidate {
      * @param layer         归属层（决定是否"已分类击杀"）
      * @param damage        本次伤害值（诊断 / 可能用于未来"最大击杀伤害" UI）
      * @param objective     伤害类型 objective 名（"MeleeDMG" / "FireDMG" / "AllDMG" ...）
+     * @param worldKey      v8.0.0 · victim 所在 world key。用于 {@link VictimTombstone}
+     *                     直接定位单 world 反查，避免 {@code for (ServerWorld w : server.getWorlds())}
+     *                     的全维度循环。可能为 null（旧调用方未传时回退全维度查询）。
      */
     public record Entry(UUID attackerUuid, String attackerLabel, long tick,
-                        AttackerProbe.Layer layer, int damage, String objective) {
+                        AttackerProbe.Layer layer, int damage, String objective,
+                        RegistryKey<World> worldKey) {
         public long age(long now) { return now - tick; }
     }
 
@@ -70,11 +77,13 @@ public final class VictimLethalCandidate {
      */
     public static void remember(UUID victimUuid, UUID attackerUuid, String attackerLabel,
                                 long tick, AttackerProbe.Layer layer,
-                                int damage, String objective) {
+                                int damage, String objective,
+                                RegistryKey<World> worldKey) {
         if (victimUuid == null) return;
         cache.put(victimUuid,
                 new Entry(attackerUuid, attackerLabel, tick,
-                        layer, damage, objective == null ? "?" : objective));
+                        layer, damage, objective == null ? "?" : objective,
+                        worldKey));
     }
 
     /**

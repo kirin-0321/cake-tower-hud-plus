@@ -17,6 +17,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * v6.6.1 · M2 · 三家 stats 的 NBT 持久化层。
@@ -90,7 +93,33 @@ public final class StatsPersistenceManager {
      */
     private static final LinkedList<NbtCompound> historyCache = new LinkedList<>();
 
+    /**
+     * v8.0.0 · 异步写盘 executor。单线程串行：保证多次 saveNow 的写顺序 = 提交顺序，
+     * 不会出现两次 writeCompressed 并发 corrupt 文件。daemon + 最低优先级，避免拖慢游戏。
+     *
+     * <p>懒初始化（{@link #getIoExecutor}）；{@link #onServerStopping} 时 shutdown，
+     * 同 JVM 重新启动新世界（集成游戏）会自动重建。
+     */
+    private static volatile ExecutorService ioExecutor;
+    private static final Object IO_LOCK = new Object();
+
     private StatsPersistenceManager() {}
+
+    private static ExecutorService getIoExecutor() {
+        ExecutorService e = ioExecutor;
+        if (e != null && !e.isShutdown()) return e;
+        synchronized (IO_LOCK) {
+            if (ioExecutor == null || ioExecutor.isShutdown()) {
+                ioExecutor = Executors.newSingleThreadExecutor(r -> {
+                    Thread t = new Thread(r, "ctt-stats-persist-io");
+                    t.setDaemon(true);
+                    t.setPriority(Thread.MIN_PRIORITY);
+                    return t;
+                });
+            }
+            return ioExecutor;
+        }
+    }
 
     // =========================================================================
     //  Lifecycle hooks
@@ -171,10 +200,33 @@ public final class StatsPersistenceManager {
         saveNow();
     }
 
-    /** SERVER_STOPPING 收尾写盘。 */
+    /**
+     * SERVER_STOPPING 收尾写盘。
+     *
+     * <p>v8.0.0 · 必须等异步队列清空，否则刚提交的最后一次写还在 executor 队列里，
+     * shutdown 时会被丢弃 → 最后一段数据丢失。最长等 5s（写盘几 KB 通常 &lt;100ms，
+     * 5s 已经足够覆盖最差的杀软介入场景）。
+     */
     public static void onServerStopping(MinecraftServer s) {
-        try { saveNow(); }
-        finally { server = null; }
+        try {
+            saveNow();
+        } finally {
+            ExecutorService e = ioExecutor;
+            if (e != null) {
+                e.shutdown();
+                try {
+                    if (!e.awaitTermination(5, TimeUnit.SECONDS)) {
+                        LOGGER.warn("[CTT Persist] async write didn't finish in 5s on shutdown; data may be incomplete.");
+                        e.shutdownNow();
+                    }
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    e.shutdownNow();
+                }
+                ioExecutor = null;
+            }
+            server = null;
+        }
     }
 
     public static void markDirty() { dirty = true; }
@@ -184,25 +236,46 @@ public final class StatsPersistenceManager {
     // =========================================================================
 
     /**
-     * 立即同步写盘。
-     * <p>非原子：先写到 .tmp 再 rename 太重了（这里数据量小且非游戏关键路径），
-     * 直接 NbtIo.writeCompressed 即可。失败仅日志，不阻断游戏。
+     * 立即写盘。
+     *
+     * <p><b>v8.0.0 异步化</b>：主线程只做 {@link #buildRoot}（必须，因为三家 stats 由
+     * 主线程独占读，跨线程访问会脏读），gzip + 磁盘 I/O 全丢给单线程 executor。
+     * 主线程不再为 SSD/HDD 抖动 / 杀软扫描卡 tick。
+     *
+     * <p>顺序保证：单线程 executor 串行执行写任务，提交顺序 = 落盘顺序，
+     * 不会发生两次写并发 corrupt 文件。失败仅日志，不阻断游戏。
      */
     public static synchronized void saveNow() {
         MinecraftServer s = server;
         if (s == null) return;
         Path f = filePath();
         if (f == null) return;
+
+        // ─── 主线程：构造 NBT 快照（必须同步，stats 只能在主线程读）
+        final NbtCompound root;
+        try {
+            root = buildRoot();
+        } catch (Throwable t) {
+            LOGGER.warn("[CTT Persist] buildRoot threw: {}", t.toString());
+            return;
+        }
+
+        // 立即推进节流时间戳：避免下一次 onTickEnd 因 IO 还没回来又重复构造一份。
+        lastSaveMs = System.currentTimeMillis();
+        dirty = false;
+
+        // ─── 后台：gzip + 磁盘写。root 是新对象，不与主线程后续状态共享，跨线程安全。
+        getIoExecutor().execute(() -> writeRootAsync(f, root));
+    }
+
+    private static void writeRootAsync(Path f, NbtCompound root) {
         try {
             Files.createDirectories(f.getParent());
-            NbtCompound root = buildRoot();
             NbtIo.writeCompressed(root, f);
-            lastSaveMs = System.currentTimeMillis();
-            dirty = false;
         } catch (IOException e) {
-            LOGGER.warn("[CTT Persist] write ctt_stats.dat failed: {}", e.toString());
+            LOGGER.warn("[CTT Persist] async write ctt_stats.dat failed: {}", e.toString());
         } catch (Throwable t) {
-            LOGGER.warn("[CTT Persist] encode ctt_stats.dat threw: {}", t.toString());
+            LOGGER.warn("[CTT Persist] async encode ctt_stats.dat threw: {}", t.toString());
         }
     }
 

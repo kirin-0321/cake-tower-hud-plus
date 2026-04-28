@@ -474,7 +474,8 @@ public final class AttackerProbe {
         //      tombstone 识别死亡时直接读出作为 killer；
         //      即使归属失败（r.attackerUuid == null）也写——让 tombstone 能识别"吃过伤害"。
         VictimLethalCandidate.remember(victimUuid, r.attackerUuid, r.attackerLabel,
-                tick, r.layer, damage, displayObjective);
+                tick, r.layer, damage, displayObjective,
+                victimWorld.getRegistryKey());
         //   2) VictimDamageContributors：累加本场对该 victim 的每玩家贡献（助攻数据源）。
         //      L7+/L8+/L9 未分类层不写（和 PlayerDamageStats 一致）。
         if (r.attackerUuid != null && isAttributionClassified(r.layer)) {
@@ -522,12 +523,16 @@ public final class AttackerProbe {
         if (guardApplies) {
             List<L1Candidate> l1 = collectL1Candidates(server, objective, victimPos, worldKey, tick);
             if (!l1.isEmpty()) {
-                // 最近开火优先；同 tick 则距离近
-                l1.sort((a, b) -> {
-                    int cmp = Long.compare(b.fireTick, a.fireTick);
-                    return cmp != 0 ? cmp : Double.compare(a.distance, b.distance);
-                });
+                // v8.0.0 性能：O(N log N) sort → O(N) 单次扫找极值。
+                // 选择规则：最近开火优先；同 tick 则距离近。语义和原 sort 完全等价。
                 L1Candidate winner = l1.get(0);
+                for (int i = 1; i < l1.size(); i++) {
+                    L1Candidate c = l1.get(i);
+                    if (c.fireTick > winner.fireTick
+                            || (c.fireTick == winner.fireTick && c.distance < winner.distance)) {
+                        winner = c;
+                    }
+                }
                 String detail = String.format("hand=%s fire-age=%dt d=%.1fm pool=%d",
                         winner.weaponKey, tick - winner.fireTick, winner.distance, l1.size());
                 return new Result(Layer.L1_WEAPON_MATCH, winner.playerUuid,
@@ -746,18 +751,18 @@ public final class AttackerProbe {
     /**
      * 玩家在 [fireFrom, tick] 内最近一次活跃时刻（右键开火 或 vanilla stat hit）。
      * 没有返回 -1。用于 L1「近 10s 开过火」认定。
+     *
+     * <p>v8.0.0 性能：原本 PlayerHitLog 走 {@code query(from,to)} 全表扫 + 过滤本玩家，
+     * 是 O(在线玩家数 × 全部 hit) 的二阶开销。改用专门的 {@code latestTickOf(uuid,...)} API
+     * （和 PlayerFireLog 同模式），降到 O(本玩家自己的 hit)，命中即提前 break。
      */
     private static long latestFireOrHitTick(UUID playerUuid, long fireFrom, long tick) {
         long latest = -1;
         // PlayerHitLog：近 10s vanilla stat（左键近战）
-        for (PlayerHitLog.PlayerHit h : PlayerHitLog.query(fireFrom, tick)) {
-            if (h.playerUuid().equals(playerUuid) && h.tick() > latest) latest = h.tick();
-        }
+        Long hit = PlayerHitLog.latestTickOf(playerUuid, fireFrom, tick);
+        if (hit != null) latest = hit;
         // PlayerFireLog：近 10s 右键（carrot_on_a_stick）
-        // 注意：PlayerFireLog.query 带距离过滤；这里只为判"有没有开过火"，不过滤距离。
-        // 走一个低成本路径：PlayerFireLog 暂未提供 "按 player uuid 查最新" API —— 走 query 即可。
-        // 距离过滤：victim 已在 40m 内筛过候选，这里只需"有没有开火记录"。
-        // 为避免 PlayerFireLog.query 的 worldKey 必填，退化到直接暴露的 query 统计（见下补丁）。
+        // 距离过滤在 L1 候选筛选时已做（victim 40m 内）；这里只判"有没有开过火"。
         Long recent = PlayerFireLog.latestTickOf(playerUuid, fireFrom, tick);
         if (recent != null && recent > latest) latest = recent;
         return latest;

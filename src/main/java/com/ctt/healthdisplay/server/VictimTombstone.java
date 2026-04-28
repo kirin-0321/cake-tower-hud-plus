@@ -3,11 +3,13 @@ package com.ctt.healthdisplay.server;
 import com.ctt.healthdisplay.config.ServerConfig;
 import net.minecraft.entity.Entity;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,7 +83,7 @@ public final class VictimTombstone {
                 aliveCount[0]++;
                 return;
             }
-            Entity victim = findEntity(server, uuid);
+            Entity victim = findEntity(server, uuid, entry.worldKey());
             if (victim == null || victim.isRemoved()) {
                 dead.add(new DiedVictim(uuid, entry, captureIdentity(victim, uuid)));
             } else {
@@ -106,9 +108,23 @@ public final class VictimTombstone {
     }
 
     /**
-     * 在所有世界里按 UUID 找实体。找不到返回 null。
+     * 按 UUID 找实体。
+     *
+     * <p>v8.0.0 性能：优先用 candidate 写入时记录的 {@code worldKey} 直接查单 world
+     * （vanilla 的 worldless candidate / 跨维度传送的 victim 是少数边缘 case，落到
+     * 全维度兜底）。CTT 地图常驻多 world（OW + 自定义维度），单 world 反查比
+     * {@code for (ServerWorld w : server.getWorlds())} 全循环节省 N-1 次 hash 查询。
      */
-    private static Entity findEntity(MinecraftServer server, UUID uuid) {
+    private static Entity findEntity(MinecraftServer server, UUID uuid, RegistryKey<World> worldKey) {
+        if (worldKey != null) {
+            ServerWorld w = server.getWorld(worldKey);
+            if (w != null) {
+                Entity e = w.getEntity(uuid);
+                if (e != null) return e;
+                // 命中 worldKey 但 entity 不在 → 真消失（或跨维度传送）。先回退兜底，
+                // 因为跨维度传送很罕见但确实可能发生。
+            }
+        }
         for (ServerWorld w : server.getWorlds()) {
             Entity e = w.getEntity(uuid);
             if (e != null) return e;

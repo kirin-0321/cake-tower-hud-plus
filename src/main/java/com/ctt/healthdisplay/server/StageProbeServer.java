@@ -3,6 +3,7 @@ package com.ctt.healthdisplay.server;
 import com.ctt.healthdisplay.network.StagePayload;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.scoreboard.ReadableScoreboardScore;
+import net.minecraft.scoreboard.ScoreHolder;
 import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.server.MinecraftServer;
@@ -183,17 +184,17 @@ public final class StageProbeServer {
 
     /**
      * 读 fake-player 形式的 dummy score（如 {@code #Tier} on objective {@code CTT}）。
+     *
+     * <p>v8.0.0 性能修复：原实现遍历 {@code sb.getKnownScoreHolders()}（CTT 地图上可达
+     * 数百到上千 holder）做线性查找，每 tick 13 次调用 = ~1300+ 次字符串比较 / tick，
+     * 是服务端 TPS 下降的最大单点贡献。改用 {@link ScoreHolder#fromName(String)} 直接
+     * 哈希查询：vanilla {@link Scoreboard#getScore} 内部走的是 {@code HashMap<ScoreHolder>}
+     * 路径，O(1)。
      */
     private static int readScore(Scoreboard sb, String fakePlayerName, String objectiveName) {
         ScoreboardObjective obj = sb.getNullableObjective(objectiveName);
         if (obj == null) return 0;
-        for (var holder : sb.getKnownScoreHolders()) {
-            if (fakePlayerName.equals(holder.getNameForScoreboard())) {
-                ReadableScoreboardScore s = sb.getScore(holder, obj);
-                if (s != null) return s.getScore();
-                return 0;
-            }
-        }
-        return 0;
+        ReadableScoreboardScore s = sb.getScore(ScoreHolder.fromName(fakePlayerName), obj);
+        return s != null ? s.getScore() : 0;
     }
 }

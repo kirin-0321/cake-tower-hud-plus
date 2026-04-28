@@ -122,15 +122,22 @@ public final class ClientDamageProbe {
      * §5.7 的 DamageShower 文本格式（严格匹配，避免 NPC 名牌误识别）：
      *
      * <ul>
-     *   <li>纯数字：{@code "144"} / {@code "8"}</li>
+     *   <li>纯数字（&lt; 400）：{@code "144"} / {@code "8"}</li>
      *   <li>混淆包裹（400-600+）：{@code "XX 144 XX"} / {@code "XXX 9999 XXX"}</li>
      * </ul>
      *
-     * <p>整段字符串只能由 {@code [X\s\d]} 字符组成——拒绝 NPC 名牌（含中文 / 空格 / 标点
+     * <p>合法前后缀字符 = {@code [X 空白 控制字符]}。拒绝 NPC 名牌（含中文 / 字母 / 标点
      * 等其他字符）的误识别。例："骷髅勇士5"、"玩家2" 都不会匹配。
+     *
+     * <p><b>v7.1.6 关键扩展</b>：原正则只允许 {@code [X\s]} 作前后缀，但地图 ctt_lang 的
+     * 中文 lang 文件 {@code zh_cn.json} 把 {@code translate "XX"} 映射成 {@code "\bXX"}
+     * （U+0008 退格符 + XX），导致大额伤害（≥400）的渲染字符串变成
+     * {@code "XX 470\bXX"} ——尾部 {@code \b} 不在 {@code \s} 范围内，正则 anchor 失败。
+     * 视觉上 {@code \b} 是不可见控制字符，但 {@code Text.getString()} 完整保留。
+     * 扩展为 {@code [X\s\p{Cntrl}]} 后既覆盖控制字符场景，又保持窄匹配语义不放任意非数字。
      */
     private static final Pattern DAMAGE_TEXT_PATTERN =
-            Pattern.compile("^[X\\s]*(\\d+)[X\\s]*$");
+            Pattern.compile("^[X\\s\\p{Cntrl}]*(\\d+)[X\\s\\p{Cntrl}]*$");
 
     // =========================================================================
     //  累加器（S2 数据源）
