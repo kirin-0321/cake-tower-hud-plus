@@ -29,6 +29,14 @@ public class ConfigScreen extends Screen {
     private boolean hideTeamBar;
     private boolean hideMobBars;
 
+    // v7.0.0 · 客户端探针 (ClientDamageProbe) 开关
+    private boolean clientDamageHudHeader;
+    private boolean clientDamageDebugChat;
+    // v7.1.2 · 队友血条下方"每人伤害/击杀"双行嵌入 HUD（OFF/ONLY_STAGE/ONLY_SESSION/BOTH）
+    private int embeddedHudMode;
+    // v7.1.0 · 客户端击杀报告聊天（计数本身始终开启，不暴露开关）
+    private boolean clientKillDebugChat;
+
     private static final int[] INTERVAL_OPTIONS = {1, 2, 3, 5, 10, 15, 30};
     private static final int[] BAR_WIDTH_OPTIONS = {30, 40, 52, 60, 70, 80};
     private static final int[] MATE_BAR_WIDTH_OPTIONS = {15, 20, 25, 30, 40, 50};
@@ -85,6 +93,13 @@ public class ConfigScreen extends Screen {
             hidePersonalBar = cfg.hidePersonalBar;
             hideTeamBar = cfg.hideTeamBar;
             hideMobBars = cfg.hideMobBars;
+            // v7.0.0 · 客户端探针开关（ClientDamageProbe）
+            clientDamageHudHeader = cfg.clientDamageHudHeader;
+            clientDamageDebugChat = cfg.clientDamageDebugChat;
+            // v7.1.2 · 嵌入式 HUD（每人伤害击杀双行）4 段开关
+            embeddedHudMode = cfg.embeddedHudMode;
+            // v7.1.0 · 客户端击杀报告聊天（计数本身始终运行，无需开关）
+            clientKillDebugChat = cfg.clientKillDebugChat;
             // v6.6.4 · M5 · 服务端字段（broadcastXxxInChat / useRedHeartsTally /
             // filterXxx 等）从此版本起搬到二级子屏 {@link ServerConfigScreen}。
             // 主屏只保留客户端 HUD 偏好，避免把"客户端能改的"和"客户端改不到"混排。
@@ -173,6 +188,38 @@ public class ConfigScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(hideMobBarsBtnText(), btn -> {
             hideMobBars = !hideMobBars;
             btn.setMessage(hideMobBarsBtnText());
+        }).dimensions(x, y, btnW, OPTION_BTN_H).build());
+        y += OPTION_SPACING + 6;
+
+        // v7.0.0 · 客户端伤害探针 (ClientDamageProbe) ——
+        //   - HUD 顶部聚合行：⚔ 全局 · ⚔ 当前关 ⚡ 5sDPS/s
+        //   - 聊天栏粒子流水：每个 DamageShower 粒子在本地聊天打 [CDP] 日志（调试用，会刷屏）
+        // 默认 hud=on / debugChat=off。
+        addDrawableChild(ButtonWidget.builder(clientDamageHudHeaderBtnText(), btn -> {
+            clientDamageHudHeader = !clientDamageHudHeader;
+            btn.setMessage(clientDamageHudHeaderBtnText());
+        }).dimensions(x, y, btnW, OPTION_BTN_H).build());
+        y += OPTION_SPACING;
+
+        // v7.1.2 · 每人伤害击杀双行（嵌入式 HUD）4 段循环按钮：
+        //   关闭 → 仅本关 → 仅本局 → 全部显示 → 关闭 ...
+        // 默认 BOTH（全部显示）；设计语义见 ModConfig.embeddedHudMode 注释。
+        addDrawableChild(ButtonWidget.builder(embeddedHudModeBtnText(), btn -> {
+            embeddedHudMode = (embeddedHudMode + 1) % 4;
+            btn.setMessage(embeddedHudModeBtnText());
+        }).dimensions(x, y, btnW, OPTION_BTN_H).build());
+        y += OPTION_SPACING;
+
+        addDrawableChild(ButtonWidget.builder(clientDamageDebugChatBtnText(), btn -> {
+            clientDamageDebugChat = !clientDamageDebugChat;
+            btn.setMessage(clientDamageDebugChatBtnText());
+        }).dimensions(x, y, btnW, OPTION_BTN_H).build());
+        y += OPTION_SPACING;
+
+        // v7.1.0 · 客户端击杀计数本身始终开启（无开关），仅暴露"是否打聊天报告"
+        addDrawableChild(ButtonWidget.builder(clientKillDebugChatBtnText(), btn -> {
+            clientKillDebugChat = !clientKillDebugChat;
+            btn.setMessage(clientKillDebugChatBtnText());
         }).dimensions(x, y, btnW, OPTION_BTN_H).build());
         y += OPTION_SPACING + 6;
 
@@ -278,6 +325,44 @@ public class ConfigScreen extends Screen {
                 Text.translatable(hideMobBars
                         ? "ctt-health-display.config.value.yes"
                         : "ctt-health-display.config.value.no")
+        );
+    }
+
+    private Text clientDamageHudHeaderBtnText() {
+        return Text.translatable(
+                "ctt-health-display.config.option.client_damage_hud_header",
+                Text.translatable(clientDamageHudHeader
+                        ? "ctt-health-display.config.value.on"
+                        : "ctt-health-display.config.value.off")
+        );
+    }
+
+    private Text embeddedHudModeBtnText() {
+        String stateKey = switch (embeddedHudMode) {
+            case ModConfig.EMBED_OFF          -> "ctt-health-display.config.value.embedded_hud_mode.off";
+            case ModConfig.EMBED_ONLY_STAGE   -> "ctt-health-display.config.value.embedded_hud_mode.only_stage";
+            case ModConfig.EMBED_ONLY_SESSION -> "ctt-health-display.config.value.embedded_hud_mode.only_session";
+            default                            -> "ctt-health-display.config.value.embedded_hud_mode.both";
+        };
+        return Text.translatable("ctt-health-display.config.option.embedded_hud_mode",
+                Text.translatable(stateKey));
+    }
+
+    private Text clientDamageDebugChatBtnText() {
+        return Text.translatable(
+                "ctt-health-display.config.option.client_damage_debug_chat",
+                Text.translatable(clientDamageDebugChat
+                        ? "ctt-health-display.config.value.on"
+                        : "ctt-health-display.config.value.off")
+        );
+    }
+
+    private Text clientKillDebugChatBtnText() {
+        return Text.translatable(
+                "ctt-health-display.config.option.client_kill_debug_chat",
+                Text.translatable(clientKillDebugChat
+                        ? "ctt-health-display.config.value.on"
+                        : "ctt-health-display.config.value.off")
         );
     }
 
@@ -502,6 +587,13 @@ public class ConfigScreen extends Screen {
         ModConfig.INSTANCE.hidePersonalBar = hidePersonalBar;
         ModConfig.INSTANCE.hideTeamBar = hideTeamBar;
         ModConfig.INSTANCE.hideMobBars = hideMobBars;
+        // v7.0.0 · 客户端探针开关
+        ModConfig.INSTANCE.clientDamageHudHeader = clientDamageHudHeader;
+        ModConfig.INSTANCE.clientDamageDebugChat = clientDamageDebugChat;
+        // v7.1.2 · 嵌入式 HUD（每人伤害击杀双行）4 段
+        ModConfig.INSTANCE.embeddedHudMode = embeddedHudMode;
+        // v7.1.0 · 客户端击杀报告聊天（计数本身始终开启，无字段）
+        ModConfig.INSTANCE.clientKillDebugChat = clientKillDebugChat;
         ModConfig.INSTANCE.save();
     }
 

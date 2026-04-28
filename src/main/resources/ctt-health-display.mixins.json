@@ -6,6 +6,7 @@
   "client": [
     "BossBarHudAccessor",
     "BossBarHudRenderMixin",
+    "InGameHudTitleMixin",
     "WorldRendererMixin",
     "TeammateHealthMixin",
     "VanillaHealthHiderMixin"

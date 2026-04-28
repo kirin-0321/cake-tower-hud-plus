@@ -1,5 +1,7 @@
 package com.ctt.healthdisplay;
 
+import com.ctt.healthdisplay.client.ClientDamageProbe;
+import com.ctt.healthdisplay.client.ClientStageProbe;
 import com.ctt.healthdisplay.client.ClientStatsCache;
 import com.ctt.healthdisplay.config.ModConfig;
 import com.ctt.healthdisplay.health.HealthData;
@@ -110,6 +112,8 @@ public class CttHealthDisplay implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             ClientStageLocation.reset();
             ClientStatsCache.reset();
+            ClientDamageProbe.INSTANCE.resetForDisconnect();
+            com.ctt.healthdisplay.client.ClientStageDetector.onDisconnect();
         });
 
         toggleHudKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
@@ -223,6 +227,15 @@ public class CttHealthDisplay implements ClientModInitializer {
                 healthData.update();
                 maybeAutoTogglePartyBossbar(client);
             }
+
+            // v7.0.0 · P0 客户端探针：每 tick 扫 DamageShower 粒子 + 累加三段聚合数字。
+            // 设计依据：CLIENT_SIDE_STATS_PROPOSAL.md §X "P0 客户端探针骨架"。
+            ClientDamageProbe.INSTANCE.onClientTick(client);
+
+            // v7.0.10 · 客户端关卡位置兜底探测：服务端没装 mod 时，1Hz 读 client scoreboard
+            // 推断当前 STAGE_*，写入 ClientStageLocation.fromClient。装着服务端 mod 时
+            // ClientStageLocation.current() 仍优先返回 fromServer，本探测结果只在兜底路径上被读。
+            ClientStageProbe.tick(client);
 
             // ALL / NEAREST 两档都要维持 mobHealthMap：NEAREST 档只是渲染时过滤非 targetted 的条，
             // 数据本身仍需更新，这样切换档位时立刻就能显示正确血量。

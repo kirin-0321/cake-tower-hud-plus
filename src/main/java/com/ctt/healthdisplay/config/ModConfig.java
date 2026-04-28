@@ -79,6 +79,31 @@ public class ModConfig {
     public static final int EMBED_ONLY_SESSION = 2;
     public static final int EMBED_BOTH         = 3;
 
+    // ===== v6.7.x · P0 客户端伤害探针（CLIENT_SIDE_STATS_PROPOSAL §X）=====
+    /**
+     * 客户端 DamageShower 粒子探针——是否把每条增量观测以 {@code [CDP] tick=N +D ...}
+     * 形式打到本地聊天。仅本地可见（不走 networking），调试用。默认关闭以避免刷屏。
+     *
+     * <p>详见 {@link com.ctt.healthdisplay.client.ClientDamageProbe}。
+     */
+    public boolean clientDamageDebugChat = false;
+
+    /**
+     * 是否在队友 HUD 顶部绘制"客户端可见伤害"聚合行：
+     * {@code ⚔ <本层> ☠ <本层击杀> ⚡ <5sDPS>/s}。仅当 {@link com.ctt.healthdisplay.client.ClientDamageProbe#hasAnyData()}
+     * 为 true 时生效——避免空 HUD 占位。默认开启。
+     */
+    public boolean clientDamageHudHeader = true;
+
+    /**
+     * v7.1.0 · 客户端击杀报告聊天日志。开启后每次检测到死亡 → 本地聊天打 {@code [CDP/KILL] tick=N ☠ <名> uuid=...}。
+     * 与 {@link #clientDamageDebugChat}（粒子流水）独立，两个开关互不影响。默认关闭以避免刷屏。
+     *
+     * <p>v7.1.0 · 客户端击杀计数本身始终开启（无配置开关）——开销低（每 tick 一次活体扫描），
+     * 关闭只会让 HUD/K 表击杀段数字恒为 0，体验上反而更乱。本字段只控制"是否往聊天打日志"。
+     */
+    public boolean clientKillDebugChat = false;
+
     // ===== v6.6.4 · M5 · 服务端字段已迁出 =====
     // 以下字段从 v6.6.4 起搬到 {@link ServerConfig}（独立 JSON 文件
     // {@code config/ctt-health-display-server.json}），本类不再持有：
@@ -127,6 +152,10 @@ public class ModConfig {
         }
         if (mobHeadHPMode < MOB_HP_MODE_ALL || mobHeadHPMode > MOB_HP_MODE_OFF) {
             mobHeadHPMode = MOB_HP_MODE_ALL;
+        }
+        // v7.1.2 · embeddedHudMode 范围校验（防手改 JSON 出非法值导致循环按钮 (x+1)%4 异常）
+        if (embeddedHudMode < EMBED_OFF || embeddedHudMode > EMBED_BOTH) {
+            embeddedHudMode = EMBED_BOTH;
         }
     }
 

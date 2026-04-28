@@ -49,6 +49,15 @@
   "ctt-health-display.config.option.broadcast_kills": "聊天栏广播·击杀: %s",
   "ctt-health-display.config.option.broadcast_taken": "聊天栏广播·承伤: %s",
 
+  "ctt-health-display.config.option.client_damage_hud_header": "全队伤害击杀显示: %s",
+  "ctt-health-display.config.option.embedded_hud_mode": "每人伤害击杀显示: %s",
+  "ctt-health-display.config.value.embedded_hud_mode.off": "关闭",
+  "ctt-health-display.config.value.embedded_hud_mode.only_stage": "仅本关",
+  "ctt-health-display.config.value.embedded_hud_mode.only_session": "仅本局",
+  "ctt-health-display.config.value.embedded_hud_mode.both": "全部显示",
+  "ctt-health-display.config.option.client_damage_debug_chat": "聊天栏粒子流水: %s",
+  "ctt-health-display.config.option.client_kill_debug_chat": "聊天栏击杀报告: %s",
+
   "ctt-health-display.config.btn.open_server_config": "服务器配置 \u25b6",
 
   "ctt-health-display.config.server.title": "服务器配置",

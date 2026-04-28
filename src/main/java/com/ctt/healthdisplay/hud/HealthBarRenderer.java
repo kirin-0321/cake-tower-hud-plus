@@ -1,5 +1,6 @@
 package com.ctt.healthdisplay.hud;
 
+import com.ctt.healthdisplay.client.ClientDamageProbe;
 import com.ctt.healthdisplay.config.ModConfig;
 import com.ctt.healthdisplay.health.HealthData;
 import com.ctt.healthdisplay.health.StatsData;
@@ -197,6 +198,15 @@ public class HealthBarRenderer {
         int x = Math.max(0, Math.min(screenWidth - MATE_BAR_WIDTH, (int) (config.teammateX * screenWidth)));
         int y = Math.max(0, Math.min(screenHeight - MATE_ENTRY_SPACING, (int) (config.teammateY * screenHeight)));
 
+        // v7.0.0 · P0 客户端探针：HUD 顶部聚合行（⚔ 全局 · ⚔ 当前关 ⚡ 5sDPS/s）。
+        // 依据 CLIENT_SIDE_STATS_PROPOSAL §X "P0 客户端探针骨架"。
+        // 仅在垂直布局 + 配置开关 + 探针有数据时绘制；绘制后 y 下移 STATS_ROW_HEIGHT 让队友行不重叠。
+        if (config.clientDamageHudHeader && !config.horizontalLayout
+                && ClientDamageProbe.INSTANCE.hasAnyData()) {
+            drawCdpHeaderRow(context, textRenderer, x, y);
+            y += STATS_ROW_HEIGHT;
+        }
+
         // v6.6 · M3：水平布局下 stats 行被强制隐藏（横排队友本来就挤）。
         boolean statsAllowed = !config.horizontalLayout && config.embeddedHudMode != ModConfig.EMBED_OFF;
 
@@ -341,6 +351,44 @@ public class HealthBarRenderer {
             String dpsStr = TeammateStatsLine.compact(line.dps()) + "/s";
             context.drawTextWithShadow(textRenderer, dpsStr, curX, y, valueColor);
         }
+    }
+
+    /**
+     * v7.0.0 · P0 客户端探针 HUD 顶部聚合行。
+     * <p>v7.1.0 · 布局：{@code ⚔ <本层伤害> ☠ <本层击杀> ⚡ <5sDPS>/s}。
+     * <ul>
+     *   <li>⚔ 本层伤害：{@link ClientDamageProbe#getStageTotal()}</li>
+     *   <li>☠ 本层击杀：{@link ClientDamageProbe#getStageKills()}（始终显示）</li>
+     *   <li>⚡ 5s DPS：{@link ClientDamageProbe#getRecent5sDps()}</li>
+     * </ul>
+     * 全局数字仍可在 K 表 / 面板查看。绘制配色与"特殊聚合行"语义对齐：⚔ 金、☠ 淡红、⚡ 黄。
+     */
+    private static void drawCdpHeaderRow(DrawContext context, TextRenderer tr, int x, int y) {
+        ClientDamageProbe probe = ClientDamageProbe.INSTANCE;
+        String stageStr  = TeammateStatsLine.compact(probe.getStageTotal());
+        String killStr   = TeammateStatsLine.compact(probe.getStageKills());
+        String dpsStr    = TeammateStatsLine.compact(probe.getRecent5sDps()) + "/s";
+
+        int cx = x;
+        // ⚔ <本层伤害>
+        String swordIcon = "\u2694";
+        context.drawTextWithShadow(tr, swordIcon, cx, y, STATS_DEALT_ICON);
+        cx += tr.getWidth(swordIcon) + 1;
+        context.drawTextWithShadow(tr, stageStr, cx, y, TEXT_GOLD);
+        cx += tr.getWidth(stageStr) + 2;
+
+        // ☠ <本层击杀>
+        String killIcon = "\u2620";
+        context.drawTextWithShadow(tr, killIcon, cx, y, STATS_KILL_ICON);
+        cx += tr.getWidth(killIcon) + 1;
+        context.drawTextWithShadow(tr, killStr, cx, y, TEXT_GOLD);
+        cx += tr.getWidth(killStr) + 2;
+
+        // ⚡ <DPS>/s
+        String boltIcon = "\u26A1";
+        context.drawTextWithShadow(tr, boltIcon, cx, y, TEXT_YELLOW);
+        cx += tr.getWidth(boltIcon);
+        context.drawTextWithShadow(tr, dpsStr, cx, y, TEXT_YELLOW);
     }
 
     private static void drawPlayerHead(DrawContext context, MinecraftClient client, String playerName, int x, int y) {

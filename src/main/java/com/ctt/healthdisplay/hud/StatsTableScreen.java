@@ -1,5 +1,6 @@
 package com.ctt.healthdisplay.hud;
 
+import com.ctt.healthdisplay.client.ClientDamageProbe;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -62,12 +63,10 @@ public final class StatsTableScreen extends Screen {
     private static final int TEXT_GREY    = 0xFF888888;
     private static final int TEXT_GOLD    = 0xFFFFAA00;
     private static final int TEXT_LIGHT_GOLD = 0xFFFFCC66;
-    private static final int TEXT_PURPLE  = 0xFFCC66FF;
     private static final int TEXT_OFFLINE = 0xFF888888;
     private static final int TEXT_ICON_DEALT = 0xFFFFFFFF;
     private static final int TEXT_ICON_TAKEN = 0xFFCCCCCC;
     private static final int TEXT_ICON_KILL  = 0xFFFF8080;
-    private static final int TEXT_ICON_BOSSK = 0xFFCC66FF;
     private static final int TEXT_ICON_ASSIST= 0xFFFFD55A;
 
     private static final int PANEL_PAD_X  = 12;
@@ -84,13 +83,14 @@ public final class StatsTableScreen extends Screen {
     private record Col(String header, int x, int w, StatsTableData.SortBy sortKey, int iconColor, boolean rightAlign) {}
     private static final Col[] TOTAL_COLS = new Col[] {
             // [头像]列宽 10；后面文本列等距
+            // v6.6.x · 删除 ☠B（boss 击杀）列：服务端尚未稳定统计为 0，先去掉显示，
+            // 后续列向左收紧 32px 填补空位（与去除前总宽 358 一致）
             new Col("\u73a9\u5bb6",     22,  86, null,                                  TEXT_WHITE,        false),
             new Col("\u2694",          110,  56, StatsTableData.SortBy.DEALT,           TEXT_ICON_DEALT,   true),
             new Col("\u26E8",          168,  46, StatsTableData.SortBy.TAKEN,           TEXT_ICON_TAKEN,   true),
             new Col("\u2620",          216,  30, StatsTableData.SortBy.KILLS,           TEXT_ICON_KILL,    true),
-            new Col("\u2620B",         248,  30, StatsTableData.SortBy.BOSS_KILLS,      TEXT_ICON_BOSSK,   true),
-            new Col("\ud83e\udd1d",    280,  30, StatsTableData.SortBy.ASSISTS,         TEXT_ICON_ASSIST,  true),
-            new Col("\u23f1",          312,  46, StatsTableData.SortBy.DURATION,        TEXT_WHITE,        true),
+            new Col("\ud83e\udd1d",    248,  30, StatsTableData.SortBy.ASSISTS,         TEXT_ICON_ASSIST,  true),
+            new Col("\u23f1",          280,  46, StatsTableData.SortBy.DURATION,        TEXT_WHITE,        true),
     };
 
     // 分关表列定义（layer/name 单独首列处理；后续列对齐总表减少视觉跳动）
@@ -145,6 +145,15 @@ public final class StatsTableScreen extends Screen {
         ctx.drawTextWithShadow(tr, sessLbl, panelX + PANEL_W - PANEL_PAD_X - sessW, y, TEXT_LIGHT_GOLD);
         y += 14;
 
+        // v7.0.0 · P0 客户端探针：顶栏第二行 - 客户端可见伤害（无归属，全场聚合）。
+        // 总表 / 分表共用同一份数据。仅当探针有数据时显示，避免空行占位。
+        // 设计依据：CLIENT_SIDE_STATS_PROPOSAL §X "P0 客户端探针骨架"。
+        if (ClientDamageProbe.INSTANCE.hasAnyData()) {
+            drawCdpHeaderBar(ctx, tr, panelX + PANEL_PAD_X,
+                    panelX + PANEL_W - PANEL_PAD_X, y);
+            y += 12;
+        }
+
         // Tab 切换条
         int tabsY = y;
         drawTab(ctx, tr, "\u603b\u8868",  panelX + PANEL_PAD_X,                         tabsY, tab == Tab.TOTAL, mouseX, mouseY);
@@ -196,6 +205,59 @@ public final class StatsTableScreen extends Screen {
     }
 
     // =========================================================================
+    //  v7.0.0 · P0 客户端探针顶栏行
+    // =========================================================================
+
+    /**
+     * 顶栏第二行：{@code 客户端可见伤害（无归属）  ⚔ 全局 N  ⚔ 当前关 N  ☠ 全局 N  ☠ 当前关 N  ⚡ 5sDPS N}。
+     * 总表 / 分表共用同一份 {@link ClientDamageProbe#INSTANCE} 数据——本阶段无 stageKey
+     * 维度细分（"全场聚合"语义）。
+     * <p>v7.1.0 · 击杀两段（☠ 全局 / ☠ 当前关）始终绘制——计数本身无开关。
+     */
+    private static void drawCdpHeaderBar(DrawContext ctx, TextRenderer tr,
+                                          int leftX, int rightX, int y) {
+        ClientDamageProbe probe = ClientDamageProbe.INSTANCE;
+        long g  = probe.getGlobalTotal();
+        long s  = probe.getStageTotal();
+        long gk = probe.getGlobalKills();
+        int  sk = probe.getStageKills();
+        int  d  = probe.getRecent5sDps();
+
+        // 左侧：标签
+        String label = "\u5ba2\u6237\u7aef\u53ef\u89c1\u4f24\u5bb3\uff08\u65e0\u5f52\u5c5e\uff09";
+        ctx.drawTextWithShadow(tr, label, leftX, y, TEXT_GREY);
+
+        // 右侧 5 段：⚔ 全局 / ⚔ 当前关 / ☠ 全局 / ☠ 当前关 / ⚡ DPS
+        String[] parts = {
+                "\u2694 \u5168\u5c40 " + TeammateStatsLine.compact(g),
+                "\u2694 \u5f53\u524d\u5173 " + TeammateStatsLine.compact(s),
+                "\u2620 \u5168\u5c40 " + TeammateStatsLine.compact(gk),
+                "\u2620 \u5f53\u524d\u5173 " + TeammateStatsLine.compact(sk),
+                "\u26A1 " + TeammateStatsLine.compact(d) + "/s"
+        };
+        int[] colors = {
+                TEXT_ICON_DEALT, TEXT_LIGHT_GOLD,
+                TEXT_ICON_KILL,  TEXT_ICON_KILL,
+                0xFFFFE466
+        };
+
+        // 整体右对齐，组与组之间 12px 间距
+        int gap = 12;
+        int totalW = 0;
+        int[] widths = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            widths[i] = tr.getWidth(parts[i]);
+            totalW += widths[i];
+        }
+        totalW += gap * (parts.length - 1);
+        int cx = rightX - totalW;
+        for (int i = 0; i < parts.length; i++) {
+            ctx.drawTextWithShadow(tr, parts[i], cx, y, colors[i]);
+            cx += widths[i] + gap;
+        }
+    }
+
+    // =========================================================================
     //  Tab
     // =========================================================================
     private void drawTab(DrawContext ctx, TextRenderer tr, String label, int x, int y, boolean active, int mx, int my) {
@@ -211,6 +273,8 @@ public final class StatsTableScreen extends Screen {
     private boolean tabClick(double mx, double my) {
         int panelX = (this.width - PANEL_W) / 2;
         int tabsY = 20 + PANEL_PAD_Y + 14;
+        // v7.0.0 · 客户端探针顶栏行存在时往下挤 12px，hit-test 区跟随
+        if (ClientDamageProbe.INSTANCE.hasAnyData()) tabsY += 12;
         if (my < tabsY || my >= tabsY + TAB_H) return false;
         int totalX = panelX + PANEL_PAD_X;
         int stageX = totalX + TAB_W + TAB_GAP;
@@ -267,10 +331,9 @@ public final class StatsTableScreen extends Screen {
             drawRightAligned(ctx, tr, compact(row.dealt()),     x + TOTAL_COLS[1].x, y + 2, TOTAL_COLS[1].w, textCol);
             drawRightAligned(ctx, tr, compact(row.taken()),     x + TOTAL_COLS[2].x, y + 2, TOTAL_COLS[2].w, textCol);
             drawRightAligned(ctx, tr, Integer.toString(row.kills()),     x + TOTAL_COLS[3].x, y + 2, TOTAL_COLS[3].w, textCol);
-            drawRightAligned(ctx, tr, Integer.toString(row.bossKills()), x + TOTAL_COLS[4].x, y + 2, TOTAL_COLS[4].w, offline ? TEXT_OFFLINE : TEXT_PURPLE);
-            drawRightAligned(ctx, tr, Integer.toString(row.assists()),   x + TOTAL_COLS[5].x, y + 2, TOTAL_COLS[5].w, textCol);
+            drawRightAligned(ctx, tr, Integer.toString(row.assists()),   x + TOTAL_COLS[4].x, y + 2, TOTAL_COLS[4].w, textCol);
             drawRightAligned(ctx, tr, StatsTableData.formatDuration(row.durationMs()),
-                                                                  x + TOTAL_COLS[6].x, y + 2, TOTAL_COLS[6].w, textCol);
+                                                                  x + TOTAL_COLS[5].x, y + 2, TOTAL_COLS[5].w, textCol);
             y += ROW_HEIGHT;
         }
         return y - yStart;
@@ -285,10 +348,9 @@ public final class StatsTableScreen extends Screen {
         drawRightAligned(ctx, tr, compact(t.dealt()),     x + TOTAL_COLS[1].x, y + 2, TOTAL_COLS[1].w, color);
         drawRightAligned(ctx, tr, compact(t.taken()),     x + TOTAL_COLS[2].x, y + 2, TOTAL_COLS[2].w, color);
         drawRightAligned(ctx, tr, Integer.toString(t.kills()),     x + TOTAL_COLS[3].x, y + 2, TOTAL_COLS[3].w, color);
-        drawRightAligned(ctx, tr, Integer.toString(t.bossKills()), x + TOTAL_COLS[4].x, y + 2, TOTAL_COLS[4].w, color);
-        drawRightAligned(ctx, tr, Integer.toString(t.assists()),   x + TOTAL_COLS[5].x, y + 2, TOTAL_COLS[5].w, color);
+        drawRightAligned(ctx, tr, Integer.toString(t.assists()),   x + TOTAL_COLS[4].x, y + 2, TOTAL_COLS[4].w, color);
         drawRightAligned(ctx, tr, StatsTableData.formatDuration(t.durationMs()),
-                                                              x + TOTAL_COLS[6].x, y + 2, TOTAL_COLS[6].w, color);
+                                                              x + TOTAL_COLS[5].x, y + 2, TOTAL_COLS[5].w, color);
     }
 
     // =========================================================================
@@ -379,8 +441,13 @@ public final class StatsTableScreen extends Screen {
         ctx.drawText(tr, text, colX + colW - tw, y, color, true);
     }
 
-    /** 画 8x8 玩家头（直接复用 PlayerListEntry 皮肤纹理）。 */
+    /**
+     * 画 8x8 玩家头（直接复用 PlayerListEntry 皮肤纹理）。
+     * <p>v7.0.22 · {@link StatsTableData#GHOST_UUID}（全 0 UUID）= "全部伤害粒子"无归属行 →
+     * 不画头像 / 灰块，留空白让"非真人"语义更直观。
+     */
     private void drawHead(DrawContext ctx, UUID uuid, int x, int y) {
+        if (uuid != null && uuid.equals(StatsTableData.GHOST_UUID)) return;
         if (client == null || client.getNetworkHandler() == null) {
             ctx.fill(x, y, x + HEAD_SIZE, y + HEAD_SIZE, 0xFF808080);
             return;

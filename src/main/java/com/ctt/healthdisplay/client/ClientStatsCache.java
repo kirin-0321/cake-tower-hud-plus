@@ -129,8 +129,10 @@ public final class ClientStatsCache {
     public static StageKey representativeStageKey() {
         if (isIntegrated()) return StageBoundaryDispatcher.representativeStageKey();
         StatsSnapshotPayload p = latest;
-        if (p == null) return null;
-        return stageAt(p, p.representativeStageIdx());
+        if (p != null) return stageAt(p, p.representativeStageIdx());
+        // v7.0.10 · 服务端没装 mod 时回退到客户端 ClientStageProbe 探测出来的 stageKey。
+        // 让 ClientDamageProbe 等 CDP 流水线在纯客户端环境也能正确分关切片。
+        return com.ctt.healthdisplay.hud.ClientStageLocation.clientFallbackStageKey();
     }
 
     public static StageKey lastSeenStageKey(UUID uuid) {

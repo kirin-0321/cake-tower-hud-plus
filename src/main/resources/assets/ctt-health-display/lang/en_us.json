@@ -49,6 +49,15 @@
   "ctt-health-display.config.option.broadcast_kills": "Chat broadcast · Kills: %s",
   "ctt-health-display.config.option.broadcast_taken": "Chat broadcast · Taken: %s",
 
+  "ctt-health-display.config.option.client_damage_hud_header": "Team damage/kill display: %s",
+  "ctt-health-display.config.option.embedded_hud_mode": "Per-player damage/kill display: %s",
+  "ctt-health-display.config.value.embedded_hud_mode.off": "Off",
+  "ctt-health-display.config.value.embedded_hud_mode.only_stage": "Stage only",
+  "ctt-health-display.config.value.embedded_hud_mode.only_session": "Session only",
+  "ctt-health-display.config.value.embedded_hud_mode.both": "Both",
+  "ctt-health-display.config.option.client_damage_debug_chat": "Per-particle chat log: %s",
+  "ctt-health-display.config.option.client_kill_debug_chat": "Per-kill chat log: %s",
+
   "ctt-health-display.config.btn.open_server_config": "Server Config \u25b6",
 
   "ctt-health-display.config.server.title": "Server Config",

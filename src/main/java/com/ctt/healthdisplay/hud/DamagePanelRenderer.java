@@ -1,5 +1,6 @@
 package com.ctt.healthdisplay.hud;
 
+import com.ctt.healthdisplay.client.ClientDamageProbe;
 import com.ctt.healthdisplay.client.ClientStatsCache;
 import com.ctt.healthdisplay.config.ModConfig;
 import com.ctt.healthdisplay.server.AttackerProbe;
@@ -47,6 +48,8 @@ public final class DamagePanelRenderer {
     public static final int FOOTER_H = 20;
     public static final int PADDING_X = 6;
     public static final int BAR_H = 4;
+    /** v7.0.0 · P0 客户端探针顶栏行高（与 StatsTableScreen 一致）。 */
+    public static final int CDP_HEADER_H = 11;
 
     // 按钮：纯文字风格，每个按钮固定占 18 px 宽（足够 [X] / [||] 居中），12 高（和标题行对齐）。
     // v6.6.0 · M1 · 第 5 个按钮 = 切片 [S]/[C]（Session / Current Stage）
@@ -92,6 +95,10 @@ public final class DamagePanelRenderer {
     /** 整个面板高度（依赖快照内容 + 详情模式）。 */
     public static int measureHeight(PlayerDamageStats.Snapshot snap, boolean detailed) {
         int h = TITLE_H + STAGE_LOC_H + SUMMARY_H;
+        // v7.0.0 · P0 客户端探针顶栏行——与 drawCore 的判断对称
+        if (ClientDamageProbe.INSTANCE.hasAnyData()) {
+            h += CDP_HEADER_H;
+        }
         int rowH = detailed ? ROW_H_DETAIL : ROW_H_COMPACT;
         h += snap.players().size() * rowH;
         if (snap.unattributedAll() > 0 || snap.unattributedAllEvents() > 0) {
@@ -142,9 +149,13 @@ public final class DamagePanelRenderer {
         PlayerDamageStats.Snapshot snap = currentScopedSnapshot();
         // session 总没数据时直接收起；切片视图即便 session 有数据但当前关还没数据也允许显示
         // （展示空表头 + "暂无数据"占位，方便玩家看到"已切到当前关 + 它是空的"）
+        // v7.0.0 · 服务端没装 mod（公服）时 sessionSnap 永远空——但只要客户端探针有数据
+        // 就允许显示面板：玩家能看到 CDP 顶栏行的"客户端可见伤害"，而归属表保持"暂无归属数据"。
         PlayerDamageStats.Snapshot sessionSnap = ClientStatsCache.damageSnapshot();
-        if (!sessionSnap.live() && sessionSnap.grandTotal() == 0
-                && sessionSnap.unattributedAll() == 0 && sessionSnap.players().isEmpty()) {
+        boolean serverHasData = sessionSnap.live() || sessionSnap.grandTotal() != 0
+                || sessionSnap.unattributedAll() != 0 || !sessionSnap.players().isEmpty();
+        boolean clientProbeHasData = ClientDamageProbe.INSTANCE.hasAnyData();
+        if (!serverHasData && !clientProbeHasData) {
             return;
         }
         int x = currentPanelX(mc);
@@ -194,6 +205,13 @@ public final class DamagePanelRenderer {
         cy += STAGE_LOC_H;
         drawSummary(ctx, tr, snap, x, cy);
         cy += SUMMARY_H;
+
+        // v7.0.0 · P0 客户端探针顶栏行——只在有数据时画，无数据则不占行高
+        // （和 measureHeight 内的判断对称）。
+        if (ClientDamageProbe.INSTANCE.hasAnyData()) {
+            drawCdpHeaderRow(ctx, tr, x, cy);
+            cy += CDP_HEADER_H;
+        }
 
         if (snap.players().isEmpty() && snap.unattributedAll() == 0) {
             ctx.drawText(tr, Text.literal(snap.frozen()
@@ -300,6 +318,29 @@ public final class DamagePanelRenderer {
         String line = String.format("总 %s  事件 %d  DPS %.0f  平均 %.1f  最高 %d  承 %s",
                 fmt(grandTotal), grandEvents, dps, avg, snap.totalMaxHit(), fmt(ts.totalTaken()));
         ctx.drawText(tr, Text.literal(line), x + PADDING_X, y + 2, COLOR_LABEL, true);
+    }
+
+    /**
+     * v7.0.0 · P0 客户端探针顶栏行（与 StatsTableScreen 风格一致）：
+     * {@code 客户端可见  ⚔ <全局> · ⚔ <当前关> ⚡ <DPS>/s}。无归属、无过滤、全场聚合。
+     * 服务端没装 mod 时这是面板上唯一的伤害可视化。
+     */
+    private static void drawCdpHeaderRow(DrawContext ctx, TextRenderer tr, int x, int y) {
+        ClientDamageProbe probe = ClientDamageProbe.INSTANCE;
+        long g = probe.getGlobalTotal();
+        long s = probe.getStageTotal();
+        int  d = probe.getRecent5sDps();
+
+        String label = "\u5ba2\u6237\u7aef\u53ef\u89c1";
+        ctx.drawText(tr, Text.literal(label), x + PADDING_X, y + 1, COLOR_LABEL, true);
+        int leftEnd = x + PADDING_X + tr.getWidth(label);
+
+        String body = "\u2694 " + fmt(g) + "  \u00b7  \u2694 " + fmt(s)
+                + "   \u26A1 " + fmt(d) + "/s";
+        int bodyW = tr.getWidth(body);
+        int bodyX = x + PANEL_WIDTH - PADDING_X - bodyW;
+        if (bodyX < leftEnd + 6) bodyX = leftEnd + 6;
+        ctx.drawText(tr, Text.literal(body), bodyX, y + 1, COLOR_PERCENT, true);
     }
 
     /** v6.6.0 · M1 · 按 scope 取 PlayerTakenStats 快照（v6.6.5 M6 · 改走 ClientStatsCache）。 */
@@ -525,7 +566,9 @@ public final class DamagePanelRenderer {
                     DamageProbe.stopSession();
                     DamageProbe.startSession();
                 }
-                feedback(mc, "伤害分配数据已清零");
+                // v7.0.0 · P0 客户端探针：服务端归属数据与客户端聚合数据语义同档，一并清零
+                ClientDamageProbe.INSTANCE.clearAll();
+                feedback(mc, "\u4f24\u5bb3\u5206\u914d\u6570\u636e\u5df2\u6e05\u96f6\uff08\u542b\u5ba2\u6237\u7aef\u63a2\u9488\uff09");
             }
             case 1 -> {
                 ModConfig cfg = ModConfig.INSTANCE;
