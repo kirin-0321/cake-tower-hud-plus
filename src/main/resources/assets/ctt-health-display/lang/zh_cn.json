@@ -58,6 +58,11 @@
   "ctt-health-display.config.option.client_damage_debug_chat": "聊天栏粒子流水: %s",
   "ctt-health-display.config.option.client_kill_debug_chat": "聊天栏击杀报告: %s",
 
+  "ctt-health-display.stats_table.btn.clear": "清空",
+  "ctt-health-display.stats_table.confirm.title": "清空客户端伤害数据？",
+  "ctt-health-display.stats_table.confirm.body": "内存与磁盘上的 ctt-health-display-cdp.json 都将被清除，无法恢复。",
+  "ctt-health-display.stats_table.confirm.ok": "清空",
+
   "ctt-health-display.config.btn.open_server_config": "服务器配置 \u25b6",
 
   "ctt-health-display.config.server.title": "服务器配置",

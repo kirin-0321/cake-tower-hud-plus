@@ -4,10 +4,12 @@ import com.ctt.healthdisplay.client.ClientDamageProbe;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.ConfirmScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.util.SkinTextures;
+import net.minecraft.screen.ScreenTexts;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
@@ -79,6 +81,14 @@ public final class StatsTableScreen extends Screen {
     private static final int TAB_H = 14;
     private static final int TAB_GAP = 4;
 
+    // v8.1.0 · 顶栏右侧 [清空数据] 按钮几何（位于 Session 字符串左侧，留 6px 间距）
+    private static final int CLEAR_BTN_W = 44;
+    private static final int CLEAR_BTN_H = 11;
+    private static final int CLEAR_BTN_GAP = 6;
+    /** 由 {@link #render} 写入，{@link #mouseClicked} 读取——render 早于 click 必然成立。 */
+    private int clearBtnX = -1;
+    private int clearBtnY = -1;
+
     // 总表列定义（x 偏移相对于 panel 左 + PANEL_PAD_X）
     private record Col(String header, int x, int w, StatsTableData.SortBy sortKey, int iconColor, boolean rightAlign) {}
     private static final Col[] TOTAL_COLS = new Col[] {
@@ -142,7 +152,14 @@ public final class StatsTableScreen extends Screen {
         long sessionMs = client == null ? 0L : com.ctt.healthdisplay.client.ClientStatsCache.sessionDurationMs();
         String sessLbl = "Session: " + StatsTableData.formatDuration(sessionMs);
         int sessW = tr.getWidth(sessLbl);
-        ctx.drawTextWithShadow(tr, sessLbl, panelX + PANEL_W - PANEL_PAD_X - sessW, y, TEXT_LIGHT_GOLD);
+        int sessX = panelX + PANEL_W - PANEL_PAD_X - sessW;
+        ctx.drawTextWithShadow(tr, sessLbl, sessX, y, TEXT_LIGHT_GOLD);
+
+        // v8.1.0 · [清空] 小按钮：Session 字符串左侧 6px，与顶栏文本竖直居中
+        clearBtnX = sessX - CLEAR_BTN_GAP - CLEAR_BTN_W;
+        clearBtnY = y - 2; // 文本基线对齐：往上挪 2px 让按钮与文字视觉居中
+        drawClearButton(ctx, tr, clearBtnX, clearBtnY, mouseX, mouseY);
+
         y += 14;
 
         // v7.0.0 · P0 客户端探针：顶栏第二行 - 客户端可见伤害（无归属，全场聚合）。
@@ -255,6 +272,51 @@ public final class StatsTableScreen extends Screen {
             ctx.drawTextWithShadow(tr, parts[i], cx, y, colors[i]);
             cx += widths[i] + gap;
         }
+    }
+
+    // =========================================================================
+    //  v8.1.0 · 顶栏 [清空数据] 按钮
+    // =========================================================================
+
+    /** 顶栏右侧"清空"按钮——hover 时背景反色，点击弹 ConfirmScreen。 */
+    private void drawClearButton(DrawContext ctx, TextRenderer tr, int x, int y, int mx, int my) {
+        boolean hovered = mx >= x && mx < x + CLEAR_BTN_W && my >= y && my < y + CLEAR_BTN_H;
+        int bg = hovered ? 0xC0AA3030 : 0x80502020;
+        int border = hovered ? 0xFFFF8080 : 0xFF884444;
+        ctx.fill(x, y, x + CLEAR_BTN_W, y + CLEAR_BTN_H, bg);
+        ctx.drawBorder(x, y, CLEAR_BTN_W, CLEAR_BTN_H, border);
+        Text label = Text.translatable("ctt-health-display.stats_table.btn.clear");
+        int lw = tr.getWidth(label);
+        int color = hovered ? 0xFFFFFFFF : 0xFFFFCCCC;
+        ctx.drawText(tr, label, x + (CLEAR_BTN_W - lw) / 2, y + (CLEAR_BTN_H - 8) / 2, color, false);
+    }
+
+    /** 几何命中判定。{@link #clearBtnX} = -1 视为 render 还没跑过，跳过。 */
+    private boolean clearButtonClick(double mx, double my) {
+        if (clearBtnX < 0) return false;
+        if (mx < clearBtnX || mx >= clearBtnX + CLEAR_BTN_W) return false;
+        if (my < clearBtnY || my >= clearBtnY + CLEAR_BTN_H) return false;
+        openClearConfirm();
+        return true;
+    }
+
+    /** 弹 vanilla ConfirmScreen 二次确认；用户确认后清空内存 + 删盘 JSON 再返回本屏。 */
+    private void openClearConfirm() {
+        if (client == null) return;
+        Text title = Text.translatable("ctt-health-display.stats_table.confirm.title");
+        Text body  = Text.translatable("ctt-health-display.stats_table.confirm.body");
+        Text yes   = Text.translatable("ctt-health-display.stats_table.confirm.ok");
+        // ConfirmScreen 6 参 ctor 显式指定 yes / no 文案；no 用 vanilla "取消"
+        ConfirmScreen confirm = new ConfirmScreen(
+                accepted -> {
+                    if (accepted) {
+                        ClientDamageProbe.INSTANCE.clearAllAndDeleteFile();
+                    }
+                    if (client != null) client.setScreen(this);
+                },
+                title, body, yes, ScreenTexts.CANCEL
+        );
+        client.setScreen(confirm);
     }
 
     // =========================================================================
@@ -472,6 +534,8 @@ public final class StatsTableScreen extends Screen {
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return super.mouseClicked(mx, my, button);
+        // v8.1.0 · 顶栏 [清空] 按钮——比 Tab 优先（位于 Session 左侧，几何不重叠）
+        if (clearButtonClick(mx, my)) return true;
         // Tab
         if (tabClick(mx, my)) return true;
         // 总表列头排序

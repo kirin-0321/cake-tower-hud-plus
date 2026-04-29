@@ -1,5 +1,6 @@
 package com.ctt.healthdisplay;
 
+import com.ctt.healthdisplay.client.CdpPersistence;
 import com.ctt.healthdisplay.client.ClientDamageProbe;
 import com.ctt.healthdisplay.client.ClientStageProbe;
 import com.ctt.healthdisplay.client.ClientStatsCache;
@@ -20,6 +21,7 @@ import com.ctt.healthdisplay.server.DamageProbe;
 import net.minecraft.text.Style;
 import net.minecraft.util.Formatting;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
@@ -109,11 +111,24 @@ public class CttHealthDisplay implements ClientModInitializer {
         });
 
         // 切服 / 断线时清缓存，避免悬挂上一局数据。
+        // v8.1.0 起 ClientDamageProbe.resetForDisconnect 内部会先 freezeCurrentStage +
+        // CdpPersistence.save，再清内存——这里调用方不需要额外操作。
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             ClientStageLocation.reset();
             ClientStatsCache.reset();
             ClientDamageProbe.INSTANCE.resetForDisconnect();
             com.ctt.healthdisplay.client.ClientStageDetector.onDisconnect();
+        });
+
+        // v8.1.0 · CDP 持久化生命周期钩子：
+        //   - CLIENT_STARTED：游戏启动后第一时间把磁盘 JSON 灌进 ClientDamageProbe
+        //   - CLIENT_STOPPING：玩家正常退出游戏前 freeze + save，避免丢"当前关进行中"
+        ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
+            ClientDamageProbe.INSTANCE.applySnapshot(CdpPersistence.load());
+        });
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            ClientDamageProbe.INSTANCE.freezeCurrentStage();
+            CdpPersistence.save(ClientDamageProbe.INSTANCE.captureSnapshot());
         });
 
         toggleHudKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(

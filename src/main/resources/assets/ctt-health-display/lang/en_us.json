@@ -58,6 +58,11 @@
   "ctt-health-display.config.option.client_damage_debug_chat": "Per-particle chat log: %s",
   "ctt-health-display.config.option.client_kill_debug_chat": "Per-kill chat log: %s",
 
+  "ctt-health-display.stats_table.btn.clear": "Clear",
+  "ctt-health-display.stats_table.confirm.title": "Clear client damage data?",
+  "ctt-health-display.stats_table.confirm.body": "Both in-memory and on-disk (ctt-health-display-cdp.json) data will be wiped. This cannot be undone.",
+  "ctt-health-display.stats_table.confirm.ok": "Wipe",
+
   "ctt-health-display.config.btn.open_server_config": "Server Config \u25b6",
 
   "ctt-health-display.config.server.title": "Server Config",

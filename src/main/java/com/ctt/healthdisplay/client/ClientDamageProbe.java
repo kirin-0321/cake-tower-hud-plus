@@ -505,6 +505,9 @@ public final class ClientDamageProbe {
      * Stage 切换时调用：把上一关的 {@code stageTotal} + 时长封冻进历史桶，
      * 然后清当前 {@code stageTotal} 并刷新 {@link #currentStageStartMs}；
      * 保留 entityToLastScore（粒子可能跨 stage 短暂存活）。
+     *
+     * <p>v8.1.0 · 末尾自动 {@link CdpPersistence#save} 持久化（把刚封冻的上一关数据
+     * 落盘），保证崩溃 / 强退最多丢"当前关进行中"的部分。
      */
     public void onStageChanged(StageKey newKey) {
         long now = System.currentTimeMillis();
@@ -527,6 +530,96 @@ public final class ClientDamageProbe {
         this.stageTotal = 0L;
         this.stageKills = 0;
         this.currentStageStartMs = (newKey == null) ? 0L : now;
+
+        CdpPersistence.save(captureSnapshot());
+    }
+
+    /**
+     * v8.1.0 · 把"当前关进行中"的数据封冻到历史桶，但<b>不</b>切换 currentStageKey、
+     * <b>不</b>清 stageTotal/stageKills（保留给当前关继续累加，避免重复）。
+     *
+     * <p>用于 {@link #resetForDisconnect} / {@code CLIENT_STOPPING} 这类"要保存数据但
+     * 当前关还没真切走"的场景——封冻后立即 save，下次启动 load 会把这段进入历史桶。
+     *
+     * <p>语义边界：调用之后 stageTotal/stageKills 被清零（因为已经合并到历史桶，再累
+     * 加会重复）。但 currentStageKey 保留——若调用方接着会清掉，那是它的事。
+     */
+    public void freezeCurrentStage() {
+        if (this.currentStageKey == null) return;
+        long now = System.currentTimeMillis();
+        if (this.stageTotal > 0L) {
+            stageHistoryDealt.merge(this.currentStageKey, this.stageTotal, Long::sum);
+        }
+        if (this.stageKills > 0) {
+            stageHistoryKills.merge(this.currentStageKey, this.stageKills, Integer::sum);
+        }
+        if (this.currentStageStartMs > 0L) {
+            long elapsed = Math.max(0L, now - this.currentStageStartMs);
+            stageHistoryDurationMs.merge(this.currentStageKey, elapsed, Long::sum);
+        }
+        this.stageTotal = 0L;
+        this.stageKills = 0;
+        // start 时间推进到 now：若之后还在同一关继续累加，时长不会重复计前面那段
+        this.currentStageStartMs = now;
+    }
+
+    /**
+     * v8.1.0 · 把当前内存状态打包成可写盘的快照。
+     * <p>只打包 HUD / K 表实际展示的字段，瞬时（dpsRing / sessionStartMs）和旁路
+     * （takenGlobal / entity 缓存）不打包——见 {@link CdpPersistence} 类头说明。
+     */
+    public CdpPersistence.Snapshot captureSnapshot() {
+        CdpPersistence.Snapshot snap = new CdpPersistence.Snapshot();
+        snap.schemaVersion = 1;
+        snap.globalTotal = globalTotal;
+        snap.globalKills = globalKills;
+        // 三张历史桶按 dealt 桶的 key 集合迭代——dealt 是必有项；kills / dur 缺则补 0
+        for (Map.Entry<StageKey, Long> e : stageHistoryDealt.entrySet()) {
+            StageKey k = e.getKey();
+            long dealt = e.getValue() == null ? 0L : e.getValue();
+            int kills = stageHistoryKills.getOrDefault(k, 0);
+            long dur = stageHistoryDurationMs.getOrDefault(k, 0L);
+            snap.stageHistory.add(new CdpPersistence.StageEntry(k, dealt, kills, dur));
+        }
+        // 仅有 kills / 仅有时长但没 dealt 的 key 也要带上（休息室无伤害但停留有时长）
+        for (Map.Entry<StageKey, Long> e : stageHistoryDurationMs.entrySet()) {
+            if (stageHistoryDealt.containsKey(e.getKey())) continue;
+            StageKey k = e.getKey();
+            long dur = e.getValue() == null ? 0L : e.getValue();
+            int kills = stageHistoryKills.getOrDefault(k, 0);
+            snap.stageHistory.add(new CdpPersistence.StageEntry(k, 0L, kills, dur));
+        }
+        for (Map.Entry<StageKey, Integer> e : stageHistoryKills.entrySet()) {
+            if (stageHistoryDealt.containsKey(e.getKey())) continue;
+            if (stageHistoryDurationMs.containsKey(e.getKey())) continue;
+            StageKey k = e.getKey();
+            int kills = e.getValue() == null ? 0 : e.getValue();
+            snap.stageHistory.add(new CdpPersistence.StageEntry(k, 0L, kills, 0L));
+        }
+        return snap;
+    }
+
+    /**
+     * v8.1.0 · 启动时把磁盘快照灌进内存。
+     * <p>只覆盖持久化字段（globalTotal / globalKills / 三张历史桶），
+     * stageTotal / stageKills / currentStageStartMs / dpsRing / sessionStartMs 等
+     * 进行中 / 瞬时字段保持构造默认值（即 0），由后续 onClientTick 自然初始化。
+     */
+    public void applySnapshot(CdpPersistence.Snapshot snap) {
+        if (snap == null) return;
+        globalTotal = Math.max(0L, snap.globalTotal);
+        globalKills = Math.max(0L, snap.globalKills);
+        stageHistoryDealt.clear();
+        stageHistoryKills.clear();
+        stageHistoryDurationMs.clear();
+        if (snap.stageHistory == null) return;
+        for (CdpPersistence.StageEntry en : snap.stageHistory) {
+            if (en == null || en.key == null) continue;
+            StageKey k = en.key.toKey();
+            if (en.dealt > 0L) stageHistoryDealt.put(k, en.dealt);
+            if (en.kills > 0) stageHistoryKills.put(k, en.kills);
+            if (en.durationMs > 0L) stageHistoryDurationMs.put(k, en.durationMs);
+        }
     }
 
     /** 由 HUD 面板"清空数据"按钮 / 断线 hook 调用。 */
@@ -552,8 +645,28 @@ public final class ClientDamageProbe {
         sessionStartMs = System.currentTimeMillis();
     }
 
-    /** 切服 / 断线时调用：累加器 + cache 全清，stageKey 也清空。 */
+    /**
+     * v8.1.0 · K 表 [清空数据] 按钮专用：清空内存 + 删除磁盘 JSON。
+     * <p>{@link #clearAll} 不删盘（断线路径会走它，不能误删）；本方法在其后追加 deleteFile。
+     */
+    public void clearAllAndDeleteFile() {
+        clearAll();
+        try {
+            CdpPersistence.deleteFile();
+        } catch (java.io.IOException e) {
+            LOGGER.warn("[CDP] delete persistence file failed: {}", e.toString());
+        }
+    }
+
+    /**
+     * 切服 / 断线时调用：先 freeze 当前关 + save 落盘，再走原有 clearAll 重置内存。
+     * <p>v8.1.0 起：在清空之前一定先把"当前关进行中数据"封冻 + 落盘——否则用户
+     * 在某关打到一半切服，那关数据就没了；现在它会先写入 stageHistoryDealt/Kills/DurMs
+     * 落盘，下次启动 load 时回到内存历史桶。
+     */
     public void resetForDisconnect() {
+        freezeCurrentStage();
+        CdpPersistence.save(captureSnapshot());
         clearAll();
         currentStageKey = null;
         currentStageStartMs = 0L;
