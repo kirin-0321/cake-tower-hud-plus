@@ -8,6 +8,7 @@ import net.minecraft.client.gui.screen.ConfirmScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.resource.language.I18n;
 import net.minecraft.client.util.SkinTextures;
 import net.minecraft.screen.ScreenTexts;
 import net.minecraft.text.Text;
@@ -90,17 +91,24 @@ public final class StatsTableScreen extends Screen {
     private int clearBtnY = -1;
 
     // 总表列定义（x 偏移相对于 panel 左 + PANEL_PAD_X）
-    private record Col(String header, int x, int w, StatsTableData.SortBy sortKey, int iconColor, boolean rightAlign) {}
+    // v8.x · header 改用 Text，文本类列头走 i18n（"玩家"/"层"/"关卡"），符号类用 literal。
+    private record Col(Text header, int x, int w, StatsTableData.SortBy sortKey, int iconColor, boolean rightAlign) {}
     private static final Col[] TOTAL_COLS = new Col[] {
             // [头像]列宽 10；后面文本列等距
             // v6.6.x · 删除 ☠B（boss 击杀）列：服务端尚未稳定统计为 0，先去掉显示，
             // 后续列向左收紧 32px 填补空位（与去除前总宽 358 一致）
-            new Col("\u73a9\u5bb6",     22,  86, null,                                  TEXT_WHITE,        false),
-            new Col("\u2694",          110,  56, StatsTableData.SortBy.DEALT,           TEXT_ICON_DEALT,   true),
-            new Col("\u26E8",          168,  46, StatsTableData.SortBy.TAKEN,           TEXT_ICON_TAKEN,   true),
-            new Col("\u2620",          216,  30, StatsTableData.SortBy.KILLS,           TEXT_ICON_KILL,    true),
-            new Col("\ud83e\udd1d",    248,  30, StatsTableData.SortBy.ASSISTS,         TEXT_ICON_ASSIST,  true),
-            new Col("\u23f1",          280,  46, StatsTableData.SortBy.DURATION,        TEXT_WHITE,        true),
+            new Col(Text.translatable("ctt-health-display.stats_table.col.player"),
+                                       22,  86, null,                                  TEXT_WHITE,        false),
+            new Col(Text.literal("\u2694"),
+                                      110,  56, StatsTableData.SortBy.DEALT,           TEXT_ICON_DEALT,   true),
+            new Col(Text.literal("\u26E8"),
+                                      168,  46, StatsTableData.SortBy.TAKEN,           TEXT_ICON_TAKEN,   true),
+            new Col(Text.literal("\u2620"),
+                                      216,  30, StatsTableData.SortBy.KILLS,           TEXT_ICON_KILL,    true),
+            new Col(Text.literal("\ud83e\udd1d"),
+                                      248,  30, StatsTableData.SortBy.ASSISTS,         TEXT_ICON_ASSIST,  true),
+            new Col(Text.literal("\u23f1"),
+                                      280,  46, StatsTableData.SortBy.DURATION,        TEXT_WHITE,        true),
     };
 
     // 分关表列定义（layer/name 单独首列处理；后续列对齐总表减少视觉跳动）
@@ -108,20 +116,28 @@ public final class StatsTableScreen extends Screen {
     // ⏱ 40→34（MM:SS 仅 5 字符 ~18px），保证总末端 ≤ 360（PANEL_W - PANEL_PAD_X * 2），
     // 不再被右侧滚动条裁掉。
     private static final Col[] STAGE_COLS = new Col[] {
-            new Col("\u5c42",            0,  34, null,                                  TEXT_WHITE,        false),
-            new Col("\u5173\u5361",     34,  76, null,                                  TEXT_WHITE,        false),
-            new Col("\u73a9\u5bb6",    122,  60, null,                                  TEXT_WHITE,        false),
-            new Col("\u2694",          184,  46, null,                                  TEXT_ICON_DEALT,   true),
-            new Col("\u26E8",          232,  40, null,                                  TEXT_ICON_TAKEN,   true),
-            new Col("\u2620",          274,  24, null,                                  TEXT_ICON_KILL,    true),
-            new Col("\ud83e\udd1d",    300,  24, null,                                  TEXT_ICON_ASSIST,  true),
-            new Col("\u23f1",          326,  34, null,                                  TEXT_WHITE,        true),
+            new Col(Text.translatable("ctt-health-display.stats_table.col.tier"),
+                                         0,  34, null,                                  TEXT_WHITE,        false),
+            new Col(Text.translatable("ctt-health-display.stats_table.col.stage"),
+                                        34,  76, null,                                  TEXT_WHITE,        false),
+            new Col(Text.translatable("ctt-health-display.stats_table.col.player"),
+                                       122,  60, null,                                  TEXT_WHITE,        false),
+            new Col(Text.literal("\u2694"),
+                                       184,  46, null,                                  TEXT_ICON_DEALT,   true),
+            new Col(Text.literal("\u26E8"),
+                                       232,  40, null,                                  TEXT_ICON_TAKEN,   true),
+            new Col(Text.literal("\u2620"),
+                                       274,  24, null,                                  TEXT_ICON_KILL,    true),
+            new Col(Text.literal("\ud83e\udd1d"),
+                                       300,  24, null,                                  TEXT_ICON_ASSIST,  true),
+            new Col(Text.literal("\u23f1"),
+                                       326,  34, null,                                  TEXT_WHITE,        true),
     };
 
     private static final int PANEL_W = 384;
 
     public StatsTableScreen() {
-        super(Text.literal("CTT \u7edf\u8ba1\u8868"));
+        super(Text.translatable("ctt-health-display.stats_table.title"));
     }
 
     @Override
@@ -173,8 +189,10 @@ public final class StatsTableScreen extends Screen {
 
         // Tab 切换条
         int tabsY = y;
-        drawTab(ctx, tr, "\u603b\u8868",  panelX + PANEL_PAD_X,                         tabsY, tab == Tab.TOTAL, mouseX, mouseY);
-        drawTab(ctx, tr, "\u5206\u5173\u8868", panelX + PANEL_PAD_X + TAB_W + TAB_GAP, tabsY, tab == Tab.STAGE, mouseX, mouseY);
+        drawTab(ctx, tr, Text.translatable("ctt-health-display.stats_table.tab.total"),
+                panelX + PANEL_PAD_X,                         tabsY, tab == Tab.TOTAL, mouseX, mouseY);
+        drawTab(ctx, tr, Text.translatable("ctt-health-display.stats_table.tab.stage"),
+                panelX + PANEL_PAD_X + TAB_W + TAB_GAP, tabsY, tab == Tab.STAGE, mouseX, mouseY);
         y += TAB_H + 6;
 
         // 分隔线
@@ -217,7 +235,7 @@ public final class StatsTableScreen extends Screen {
         }
 
         // 底部提示
-        ctx.drawText(tr, Text.literal("\u70b9\u51fb\u5217\u5934\u6392\u5e8f \u00b7 \u6eda\u8f6e\u6eda\u52a8 \u00b7 N / Esc \u5173\u95ed"),
+        ctx.drawText(tr, Text.translatable("ctt-health-display.stats_table.hint"),
                 panelX + PANEL_PAD_X, panelY + panelH + 2, 0xFFAAAAAA, false);
     }
 
@@ -241,15 +259,18 @@ public final class StatsTableScreen extends Screen {
         int  d  = probe.getRecent5sDps();
 
         // 左侧：标签
-        String label = "\u5ba2\u6237\u7aef\u53ef\u89c1\u4f24\u5bb3\uff08\u65e0\u5f52\u5c5e\uff09";
+        Text label = Text.translatable("ctt-health-display.stats_table.cdp.label");
         ctx.drawTextWithShadow(tr, label, leftX, y, TEXT_GREY);
 
         // 右侧 5 段：⚔ 全局 / ⚔ 当前关 / ☠ 全局 / ☠ 当前关 / ⚡ DPS
+        // i18n 提前 translate 一次，避免每段拼接出 MutableText 链导致宽度计算变贵。
+        String scopeGlobal = I18n.translate("ctt-health-display.stats_table.cdp.scope.global");
+        String scopeStage  = I18n.translate("ctt-health-display.stats_table.cdp.scope.stage");
         String[] parts = {
-                "\u2694 \u5168\u5c40 " + TeammateStatsLine.compact(g),
-                "\u2694 \u5f53\u524d\u5173 " + TeammateStatsLine.compact(s),
-                "\u2620 \u5168\u5c40 " + TeammateStatsLine.compact(gk),
-                "\u2620 \u5f53\u524d\u5173 " + TeammateStatsLine.compact(sk),
+                "\u2694 " + scopeGlobal + " " + TeammateStatsLine.compact(g),
+                "\u2694 " + scopeStage  + " " + TeammateStatsLine.compact(s),
+                "\u2620 " + scopeGlobal + " " + TeammateStatsLine.compact(gk),
+                "\u2620 " + scopeStage  + " " + TeammateStatsLine.compact(sk),
                 "\u26A1 " + TeammateStatsLine.compact(d) + "/s"
         };
         int[] colors = {
@@ -322,7 +343,7 @@ public final class StatsTableScreen extends Screen {
     // =========================================================================
     //  Tab
     // =========================================================================
-    private void drawTab(DrawContext ctx, TextRenderer tr, String label, int x, int y, boolean active, int mx, int my) {
+    private void drawTab(DrawContext ctx, TextRenderer tr, Text label, int x, int y, boolean active, int mx, int my) {
         boolean hovered = mx >= x && mx < x + TAB_W && my >= y && my < y + TAB_H;
         int bg = active ? 0xC0FFAA00 : (hovered ? 0x60808080 : 0x60404040);
         ctx.fill(x, y, x + TAB_W, y + TAB_H, bg);
@@ -357,12 +378,12 @@ public final class StatsTableScreen extends Screen {
     private int drawTotalHeader(DrawContext ctx, TextRenderer tr, int x, int y) {
         ctx.fill(x - 2, y - 1, x + PANEL_W - PANEL_PAD_X * 2 + 2, y + HEAD_ROW_HEIGHT - 1, HEAD_BG);
         for (Col c : TOTAL_COLS) {
-            String head = c.header;
+            Text head = c.header;
             int colX = x + c.x;
             int textColor = c.iconColor;
             // 当前排序列加箭头
             if (c.sortKey == sortBy) {
-                head = head + (sortAscending ? "\u25b2" : "\u25bc");
+                head = head.copy().append(Text.literal(sortAscending ? "\u25b2" : "\u25bc"));
                 textColor = TEXT_LIGHT_GOLD;
             }
             int hw = tr.getWidth(head);
@@ -387,7 +408,9 @@ public final class StatsTableScreen extends Screen {
             // 头像
             drawHead(ctx, row.uuid(), x + 2, y);
             // 玩家名
-            String displayName = offline ? (row.name() + " [\u79bb\u7ebf]") : row.name();
+            String displayName = offline
+                    ? (row.name() + " " + I18n.translate("ctt-health-display.stats_table.offline_suffix"))
+                    : row.name();
             ctx.drawText(tr, displayName, x + TOTAL_COLS[0].x, y + 2, textCol, true);
             // 数字列
             drawRightAligned(ctx, tr, compact(row.dealt()),     x + TOTAL_COLS[1].x, y + 2, TOTAL_COLS[1].w, textCol);
@@ -421,7 +444,7 @@ public final class StatsTableScreen extends Screen {
     private int drawStageHeader(DrawContext ctx, TextRenderer tr, int x, int y) {
         ctx.fill(x - 2, y - 1, x + PANEL_W - PANEL_PAD_X * 2 + 2, y + HEAD_ROW_HEIGHT - 1, HEAD_BG);
         for (Col c : STAGE_COLS) {
-            String head = c.header;
+            Text head = c.header;
             int colX = x + c.x;
             int hw = tr.getWidth(head);
             int drawX = c.rightAlign ? colX + c.w - hw : colX;
@@ -435,7 +458,7 @@ public final class StatsTableScreen extends Screen {
         UUID self = StatsTableData.selfUuid();
         int y = yStart;
         if (data.blocks().isEmpty()) {
-            ctx.drawText(tr, Text.literal("\u5c1a\u65e0\u6570\u636e \u00b7 \u8fdb\u5165\u7b2c\u4e00\u5173\u540e\u5f00\u59cb\u7edf\u8ba1"),
+            ctx.drawText(tr, Text.translatable("ctt-health-display.stats_table.empty"),
                     x, y + 8, TEXT_GREY, false);
             return 24;
         }
@@ -467,7 +490,9 @@ public final class StatsTableScreen extends Screen {
                 }
                 // 头像 + 名字
                 drawHead(ctx, row.uuid(), x + STAGE_COLS[2].x - 10, y);
-                String displayName = offline ? (row.name() + " [\u79bb\u7ebf]") : row.name();
+                String displayName = offline
+                        ? (row.name() + " " + I18n.translate("ctt-health-display.stats_table.offline_suffix"))
+                        : row.name();
                 ctx.drawText(tr, displayName, x + STAGE_COLS[2].x, y + 2, textCol, true);
                 // 数字
                 drawRightAligned(ctx, tr, compact(row.dealt()),    x + STAGE_COLS[3].x, y + 2, STAGE_COLS[3].w, textCol);

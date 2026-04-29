@@ -276,7 +276,7 @@ public final class StatsTableData {
                 if (key.equals(cdpCurrent)) {
                     stageDur = cdpCurrentDurMs;
                 } else {
-        ee            Long h = cdpDurHistory.get(key);
+                    Long h = cdpDurHistory.get(key);
                     if (h != null) stageDur = h;
                 }
             }

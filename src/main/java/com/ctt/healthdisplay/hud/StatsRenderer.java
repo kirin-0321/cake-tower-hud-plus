@@ -32,9 +32,9 @@ public class StatsRenderer {
         int y = (int) (config.statsY * screenH);
 
         if (!data.hasData()) {
-            String hint = data.isGameNotStarted()
-                    ? "\u6e38\u620f\u672a\u5f00\u59cb"
-                    : "\u8f93\u5165 /trigger ViewStats \u67e5\u770b\u5c5e\u6027";
+            Text hint = data.isGameNotStarted()
+                    ? Text.translatable("ctt-health-display.stats.hint.game_not_started")
+                    : Text.translatable("ctt-health-display.stats.hint.use_view_stats");
             context.drawTextWithShadow(tr, hint, x, y, 0xFF888888);
             return;
         }
