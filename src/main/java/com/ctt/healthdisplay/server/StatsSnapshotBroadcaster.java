@@ -108,9 +108,16 @@ public final class StatsSnapshotBroadcaster {
         allKeys.addAll(PlayerKillStats.recordedStageKeys());
         allKeys.addAll(PlayerTakenStats.recordedStageKeys());
 
+        // v8.1.0 · 排序铁律：按"进入关卡的墙钟时间戳"升序（早→晚），与客户端 CDP
+        // LinkedHashMap 插入序语义保持一致——纯客户端模式 / 服务端模式分关表两端
+        // 都从上往下时间递增。enterMs == 0（数据缺失）的项排到末尾，按 (T,F,n) 兜底。
         List<StageKey> sortedKeys = new ArrayList<>(allKeys);
         sortedKeys.sort(Comparator
-                .comparingInt((StageKey k) -> parseInt(k.tier()))
+                .comparingLong((StageKey k) -> {
+                    long t = StageBoundaryDispatcher.stageEnterMs(k);
+                    return t > 0L ? t : Long.MAX_VALUE;
+                })
+                .thenComparingInt((StageKey k) -> parseInt(k.tier()))
                 .thenComparingInt(k -> parseInt(k.floor()))
                 .thenComparingInt(k -> parseInt(k.stageNum()))
                 .thenComparing(k -> str(k.stageType()))

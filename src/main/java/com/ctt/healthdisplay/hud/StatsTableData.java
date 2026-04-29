@@ -182,36 +182,71 @@ public final class StatsTableData {
     ) {}
 
     public static Stage buildStage() {
-        // v7.0.16 · 改为时间序：先把 CDP 历史 LinkedHashMap 的迭代序（= 切关顺序）作为主轴，
-        // 当前桶 append 到末尾；服务端三家 stats 提供的额外 key（极少出现于纯客户端模式）按
-        // (T,F,n) 排序后追加到末尾，保证不丢数据但不破坏时间轴。
+        // v8.1.0 · 排序铁律：按"进入关卡的墙钟时间戳"升序（早→晚，从上往下）。
+        // 数据源优先级（高 → 低）：
+        //   1) CDP stageHistoryEnterMs（客户端首次进入墙钟，最准）
+        //   2) 当前关 currentStageStartMs（CDP 进行中桶）
+        //   3) 服务端 ClientStatsCache.stageEnterMs（dedicated 模式 / detector 未见过的 key）
+        // enterMs 全为 0（旧 v1 持久化文件 + 服务端无数据）→ 兜底用 CDP 历史 LinkedHashMap
+        // 迭代序索引，仍然保持旧用户的视觉时序；最后才按 (T,F,n) 字典序兜底。
         var cdp = com.ctt.healthdisplay.client.ClientDamageProbe.INSTANCE;
         java.util.Map<StageKey, Long> cdpHistory = cdp.getStageHistoryDealt();
         java.util.Map<StageKey, Long> cdpDurHistory = cdp.getStageHistoryDurationMs();
+        java.util.Map<StageKey, Long> cdpEnterMsHistory = cdp.getStageHistoryEnterMs();
         StageKey cdpCurrent = cdp.getCurrentStageKey();
+        long cdpCurrentStartMs = cdp.getCurrentStageStartMs();
         long cdpCurrentTotal = cdp.getStageTotal();
         long cdpCurrentDurMs = cdp.getCurrentStageDurationMs();
         // fallback 触发条件放宽：只要 detector 进过任何关 / 当前在某关 → 启用
         boolean cdpFallbackActive = !cdpHistory.isEmpty() || !cdpDurHistory.isEmpty() || cdpCurrent != null;
 
-        LinkedHashSet<StageKey> orderedKeys = new LinkedHashSet<>();
+        // 1) 收集所有候选 key（去重）
+        LinkedHashSet<StageKey> candidateKeys = new LinkedHashSet<>();
         if (cdpFallbackActive) {
-            // dur 历史 = dealt 历史的超集（dealt=0 但停留时间>0 的关也要列出来，例如休息室、过场）
-            orderedKeys.addAll(cdpDurHistory.keySet());
-            orderedKeys.addAll(cdpHistory.keySet());
-            if (cdpCurrent != null) orderedKeys.add(cdpCurrent); // 进行中桶在末尾
+            candidateKeys.addAll(cdpDurHistory.keySet());
+            candidateKeys.addAll(cdpHistory.keySet());
+            candidateKeys.addAll(cdpEnterMsHistory.keySet());
+            if (cdpCurrent != null) candidateKeys.add(cdpCurrent);
         }
-        // 兜底：服务端三家 stats 里 detector 没见过的 key，按 (T,F,n) 排序追加
-        Set<StageKey> serverKeys = new HashSet<>(ClientStatsCache.recordedStageKeys());
-        serverKeys.removeAll(orderedKeys);
-        if (!serverKeys.isEmpty()) {
-            List<StageKey> serverOrdered = new ArrayList<>(serverKeys);
-            serverOrdered.sort(Comparator
-                    .comparingInt((StageKey k) -> parseIntOrZero(k.tier()))
-                    .thenComparingInt(k -> parseIntOrZero(k.floor()))
-                    .thenComparingInt(k -> parseIntOrZero(k.stageNum())));
-            orderedKeys.addAll(serverOrdered);
+        candidateKeys.addAll(ClientStatsCache.recordedStageKeys());
+
+        // 2) 算每 key 的 enterMs + 旧文件兜底用的迭代序索引
+        // 迭代序 = "在 cdpHistory/cdpDurHistory 中第几个出现"——纯客户端时序兜底
+        java.util.Map<StageKey, Integer> legacyOrderIdx = new HashMap<>();
+        int legacyIdx = 0;
+        for (StageKey k : cdpDurHistory.keySet()) legacyOrderIdx.putIfAbsent(k, legacyIdx++);
+        for (StageKey k : cdpHistory.keySet())    legacyOrderIdx.putIfAbsent(k, legacyIdx++);
+
+        java.util.Map<StageKey, Long> enterMsByKey = new HashMap<>(candidateKeys.size());
+        for (StageKey k : candidateKeys) {
+            long t = 0L;
+            // 当前进行中关：CDP currentStageStartMs 优先
+            if (k.equals(cdpCurrent) && cdpCurrentStartMs > 0L) {
+                t = cdpCurrentStartMs;
+            }
+            if (t == 0L) {
+                Long h = cdpEnterMsHistory.get(k);
+                if (h != null) t = h;
+            }
+            if (t == 0L) {
+                long s = ClientStatsCache.stageEnterMs(k);
+                if (s > 0L) t = s;
+            }
+            enterMsByKey.put(k, t);
         }
+
+        // 3) 排序：enterMs 升序 → 旧迭代序 → (T,F,n) 字典序
+        List<StageKey> sortedKeys = new ArrayList<>(candidateKeys);
+        sortedKeys.sort(Comparator
+                .comparingLong((StageKey k) -> {
+                    long t = enterMsByKey.getOrDefault(k, 0L);
+                    return t > 0L ? t : Long.MAX_VALUE;
+                })
+                .thenComparingInt(k -> legacyOrderIdx.getOrDefault(k, Integer.MAX_VALUE))
+                .thenComparingInt((StageKey k) -> parseIntOrZero(k.tier()))
+                .thenComparingInt(k -> parseIntOrZero(k.floor()))
+                .thenComparingInt(k -> parseIntOrZero(k.stageNum())));
+        LinkedHashSet<StageKey> orderedKeys = new LinkedHashSet<>(sortedKeys);
 
         // v7.0.22 · 客户端 fallback 单行用 ghost UUID + 固定名"全部伤害粒子"——
         // 强调 CDP 是无归属的全场粒子聚合，不属于任何具体玩家：
@@ -241,7 +276,7 @@ public final class StatsTableData {
                 if (key.equals(cdpCurrent)) {
                     stageDur = cdpCurrentDurMs;
                 } else {
-                    Long h = cdpDurHistory.get(key);
+        ee            Long h = cdpDurHistory.get(key);
                     if (h != null) stageDur = h;
                 }
             }
@@ -284,8 +319,7 @@ public final class StatsTableData {
             blocks.add(new StageBlock(key, tierFloor, name, inProgress, stageDur,
                     Collections.unmodifiableList(rows)));
         }
-        // v7.0.16 · 不再二次排序：orderedKeys 已经是时间序（CDP 历史 → 当前 → 服务端兜底）
-
+        // v8.1.0 · 不再二次排序：orderedKeys 已经是 enterMs 升序（早→晚，从上往下）。
         return new Stage(Collections.unmodifiableList(blocks),
                 ClientStatsCache.sessionDurationMs());
     }

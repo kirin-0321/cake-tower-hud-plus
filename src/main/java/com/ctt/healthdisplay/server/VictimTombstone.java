@@ -195,10 +195,19 @@ public final class VictimTombstone {
             PlayerKillStats.recordUnattributedKill(null, kind, tick);
         }
 
-        if (ServerConfig.INSTANCE.broadcastKillsInChat) {
-            server.getPlayerManager().broadcast(
-                    buildChatLine(d.identity, killerUuid, killerLabel, layer, kind, assists, classified),
-                    false);
+        // v8.x · 双路由：全局兜底（JSON 启用）→ 全服广播；否则仅发 per-player 订阅者。
+        // 任一开启就构造 Text。击杀事件本身稀疏，构造成本可忽略。
+        boolean killGlobal = ServerConfig.INSTANCE.broadcastKillsInChat;
+        boolean killAnySub = com.ctt.healthdisplay.server.command.BroadcastSubscribers
+                .hasAnySubscriber(com.ctt.healthdisplay.server.command.BroadcastSubscribers.Channel.KILL);
+        if (killGlobal || killAnySub) {
+            net.minecraft.text.Text msg = buildChatLine(d.identity, killerUuid, killerLabel, layer, kind, assists, classified);
+            if (killGlobal) {
+                server.getPlayerManager().broadcast(msg, false);
+            } else {
+                com.ctt.healthdisplay.server.command.BroadcastSubscribers.sendTo(
+                        server, com.ctt.healthdisplay.server.command.BroadcastSubscribers.Channel.KILL, msg);
+            }
         }
 
         LOGGER.info("[CTT Kill] victim={} ({}) killer={} layer={} kind={} assists={} contribs={} age={}t tick={}",

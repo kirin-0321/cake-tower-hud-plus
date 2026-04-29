@@ -496,6 +496,14 @@ public final class ClientDamageProbe {
     private final java.util.LinkedHashMap<StageKey, Long> stageHistoryDurationMs = new java.util.LinkedHashMap<>();
 
     /**
+     * v8.1.0 · 关卡<b>首次</b>进入墙钟时间戳（{@link System#currentTimeMillis}）。
+     * <p>{@link #onStageChanged} 末尾对 newKey 做 putIfAbsent——切回旧关也保持原始时序。
+     * <p>分关表 {@link com.ctt.healthdisplay.hud.StatsTableData#buildStage} 用它做主排序键，
+     * 与服务端 {@code STAGE_ENTER_MS} 语义对齐（"何时第一次踏进这关"）。
+     */
+    private final java.util.LinkedHashMap<StageKey, Long> stageHistoryEnterMs = new java.util.LinkedHashMap<>();
+
+    /**
      * v7.0.17 · 当前关进入时刻（{@link System#currentTimeMillis}）。
      * <p>{@code currentStageKey == null} 时无意义；切关瞬间先用旧值算上一关时长，再覆盖为 now。
      */
@@ -530,6 +538,10 @@ public final class ClientDamageProbe {
         this.stageTotal = 0L;
         this.stageKills = 0;
         this.currentStageStartMs = (newKey == null) ? 0L : now;
+        // v8.1.0 · putIfAbsent：切回旧关也保持原始时序，分关表排序稳定。
+        if (newKey != null) {
+            stageHistoryEnterMs.putIfAbsent(newKey, now);
+        }
 
         CdpPersistence.save(captureSnapshot());
     }
@@ -570,7 +582,9 @@ public final class ClientDamageProbe {
      */
     public CdpPersistence.Snapshot captureSnapshot() {
         CdpPersistence.Snapshot snap = new CdpPersistence.Snapshot();
-        snap.schemaVersion = 1;
+        // v8.1.0 · schema v2：StageEntry 新增 enterMs 字段。旧版 client 读 v2 文件
+        // 会忽略 enterMs（默认 0），新版读旧 v1 文件时 enterMs == 0 由 buildStage 兜底。
+        snap.schemaVersion = 2;
         snap.globalTotal = globalTotal;
         snap.globalKills = globalKills;
         // 三张历史桶按 dealt 桶的 key 集合迭代——dealt 是必有项；kills / dur 缺则补 0
@@ -579,7 +593,8 @@ public final class ClientDamageProbe {
             long dealt = e.getValue() == null ? 0L : e.getValue();
             int kills = stageHistoryKills.getOrDefault(k, 0);
             long dur = stageHistoryDurationMs.getOrDefault(k, 0L);
-            snap.stageHistory.add(new CdpPersistence.StageEntry(k, dealt, kills, dur));
+            long enter = stageHistoryEnterMs.getOrDefault(k, 0L);
+            snap.stageHistory.add(new CdpPersistence.StageEntry(k, dealt, kills, dur, enter));
         }
         // 仅有 kills / 仅有时长但没 dealt 的 key 也要带上（休息室无伤害但停留有时长）
         for (Map.Entry<StageKey, Long> e : stageHistoryDurationMs.entrySet()) {
@@ -587,14 +602,16 @@ public final class ClientDamageProbe {
             StageKey k = e.getKey();
             long dur = e.getValue() == null ? 0L : e.getValue();
             int kills = stageHistoryKills.getOrDefault(k, 0);
-            snap.stageHistory.add(new CdpPersistence.StageEntry(k, 0L, kills, dur));
+            long enter = stageHistoryEnterMs.getOrDefault(k, 0L);
+            snap.stageHistory.add(new CdpPersistence.StageEntry(k, 0L, kills, dur, enter));
         }
         for (Map.Entry<StageKey, Integer> e : stageHistoryKills.entrySet()) {
             if (stageHistoryDealt.containsKey(e.getKey())) continue;
             if (stageHistoryDurationMs.containsKey(e.getKey())) continue;
             StageKey k = e.getKey();
             int kills = e.getValue() == null ? 0 : e.getValue();
-            snap.stageHistory.add(new CdpPersistence.StageEntry(k, 0L, kills, 0L));
+            long enter = stageHistoryEnterMs.getOrDefault(k, 0L);
+            snap.stageHistory.add(new CdpPersistence.StageEntry(k, 0L, kills, 0L, enter));
         }
         return snap;
     }
@@ -612,6 +629,7 @@ public final class ClientDamageProbe {
         stageHistoryDealt.clear();
         stageHistoryKills.clear();
         stageHistoryDurationMs.clear();
+        stageHistoryEnterMs.clear();
         if (snap.stageHistory == null) return;
         for (CdpPersistence.StageEntry en : snap.stageHistory) {
             if (en == null || en.key == null) continue;
@@ -619,6 +637,9 @@ public final class ClientDamageProbe {
             if (en.dealt > 0L) stageHistoryDealt.put(k, en.dealt);
             if (en.kills > 0) stageHistoryKills.put(k, en.kills);
             if (en.durationMs > 0L) stageHistoryDurationMs.put(k, en.durationMs);
+            // v8.1.0 · 旧版 v1 文件 enterMs == 0：分关表 buildStage 用 stageHistory
+            // list 的迭代序兜底；这里只在有真实时间戳时填入。
+            if (en.enterMs > 0L) stageHistoryEnterMs.put(k, en.enterMs);
         }
     }
 
@@ -633,6 +654,7 @@ public final class ClientDamageProbe {
         entityToLastScore.clear();
         stageHistoryDealt.clear();
         stageHistoryDurationMs.clear();
+        stageHistoryEnterMs.clear();
         // v7.1.0 · 击杀计数 + HP 缓存一并清空
         globalKills = 0L;
         stageKills = 0;
@@ -641,6 +663,10 @@ public final class ClientDamageProbe {
         lastNameByUuid.clear();
         // 当前关仍然在跑 → start 时间重置为 now，已用时长归零
         currentStageStartMs = (currentStageKey == null) ? 0L : System.currentTimeMillis();
+        // v8.1.0 · 当前关也要重新登记 enterMs，否则分关表会漏排
+        if (currentStageKey != null) {
+            stageHistoryEnterMs.put(currentStageKey, currentStageStartMs);
+        }
         // v7.1.1 · 会话计时也归零；下个 tick 自动重锚（不影响 session 仍在跑的语义）
         sessionStartMs = System.currentTimeMillis();
     }
@@ -723,6 +749,23 @@ public final class ClientDamageProbe {
     public java.util.Map<StageKey, Long> getStageHistoryDurationMs() {
         return java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(stageHistoryDurationMs));
     }
+
+    /**
+     * v8.1.0 · 已完成关卡的"首次进入墙钟时间戳"快照（毫秒，不可变副本）。
+     * <p>{@link com.ctt.healthdisplay.hud.StatsTableData#buildStage} 用它做主排序键
+     * （早→晚，从上往下），与服务端 {@code STAGE_ENTER_MS} 语义对齐；旧 v1 持久化文件
+     * 加载时该 key 缺失（buildStage 自行兜底用 LinkedHashMap 迭代序）。
+     */
+    public java.util.Map<StageKey, Long> getStageHistoryEnterMs() {
+        return java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(stageHistoryEnterMs));
+    }
+
+    /**
+     * v8.1.0 · 当前关首次进入的墙钟时间戳（毫秒）。{@code currentStageKey == null} 时返回 0。
+     * <p>注意与 {@link #getCurrentStageDurationMs} 区分：后者随调用时间动态增长，
+     * 这个是"何时踏进当前关"的固定时间锚。
+     */
+    public long getCurrentStageStartMs() { return currentStageStartMs; }
 
     /**
      * v7.0.17 · 当前关已用时长（毫秒）。{@code currentStageKey == null} 时返回 0。

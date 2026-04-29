@@ -62,8 +62,19 @@ public class ServerConfig {
     public boolean broadcastKillsInChat = false;
     /** 是否在聊天栏广播承伤事件 {@code [承伤] Player -40}。默认关。 */
     public boolean broadcastTakenInChat = false;
-    /** 承伤广播阈值：本 tick DamageTook &lt; 该值时不广播。默认 1（全部广播）。 */
-    public int broadcastTakenThreshold = 1;
+    /**
+     * 承伤广播阈值：本 tick DamageTook &lt; 该值时不广播。默认 0（全部广播）。
+     * v8.x · 默认从 1 改为 0 —— 0 与 1 在 PlayerTakenProbe 的 {@code v &gt; 0} 前置守卫下行为相同，
+     * 但 0 的语义更清晰直白（"零阈值 = 全广播"），与 {@link #broadcastDamageThreshold} 对齐。
+     * v4 配置版本迁移：旧 JSON 里若仍是默认值 1，会被强制改为 0；用户改过的值（如 5/10）保留。
+     */
+    public int broadcastTakenThreshold = 0;
+    /**
+     * 伤害广播阈值（v8.x 引入）：单次 damage &lt; 该值时不入队广播。默认 0（全部广播）。
+     * 设为 100 即只显示大额伤害事件（{@code damage &gt;= 100}）。负数（{@link com.ctt.healthdisplay.server.AttackerProbe.Layer#L9_HEAL}
+     * 治疗）一律 &lt; 任何非负阈值，自动被过滤；想看治疗事件请保持阈值 0。
+     */
+    public int broadcastDamageThreshold = 0;
 
     // ===== 主数据源切换 =====
     /**
@@ -359,6 +370,16 @@ public class ServerConfig {
                 changed = true;
             }
         }
+        if (configVersion < 4) {
+            // v8.x · 承伤广播阈值默认从 1 改为 0。条件覆写：旧值正好是默认 1 时才改 0，
+            //   用户改过（5 / 10 / ...）的值保留。
+            //   broadcastDamageThreshold 是 v8.x 新字段，旧 JSON 没有，反序列化为默认值 0，
+            //   不需要专门处理。
+            if (this.broadcastTakenThreshold == 1) {
+                this.broadcastTakenThreshold = 0;
+                changed = true;
+            }
+        }
         // 任何迁移分支跑完后把版本号顶到当前。
         if (configVersion < CURRENT_CONFIG_VERSION) {
             configVersion = CURRENT_CONFIG_VERSION;
@@ -386,6 +407,8 @@ public class ServerConfig {
                 dst.broadcastTakenInChat = obj.get("broadcastTakenInChat").getAsBoolean();
             if (obj.has("broadcastTakenThreshold"))
                 dst.broadcastTakenThreshold = obj.get("broadcastTakenThreshold").getAsInt();
+            if (obj.has("broadcastDamageThreshold"))
+                dst.broadcastDamageThreshold = obj.get("broadcastDamageThreshold").getAsInt();
 
             if (obj.has("useRedHeartsTally"))
                 dst.useRedHeartsTally = obj.get("useRedHeartsTally").getAsBoolean();
@@ -456,6 +479,7 @@ public class ServerConfig {
         if (blockedStages == null) blockedStages = new String[0];
         if (lowNoiseWeaponWhitelist == null) lowNoiseWeaponWhitelist = new String[0];
         if (broadcastTakenThreshold < 0) broadcastTakenThreshold = 0;
+        if (broadcastDamageThreshold < 0) broadcastDamageThreshold = 0;
         if (suspectVictimDamageThreshold < 0) suspectVictimDamageThreshold = 0;
         if (lowDamageFloor < 0) lowDamageFloor = 0;
         if (defenceExclusionThreshold < 0) defenceExclusionThreshold = 0;

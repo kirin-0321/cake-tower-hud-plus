@@ -56,6 +56,10 @@ public class CttStatsServer implements ModInitializer {
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastTakenInChat,
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.useRedHeartsTally);
 
+        // v8.x · 注册 /ctthd broadcast ... 运行时开关命令。requires=true，
+        // 任意权限玩家都能用，方便服务器现场临时开广播诊断。
+        com.ctt.healthdisplay.server.command.BroadcastToggleCommand.register();
+
         // 加载武器-伤害注册表（失败只打日志，不阻断服务端启动）
         WeaponDamageRegistry.load();
         LOGGER.info("[CTT Stats] weapon registry loaded: {} weapons", WeaponDamageRegistry.weaponCount());
@@ -111,8 +115,12 @@ public class CttStatsServer implements ModInitializer {
             // 不用等下一个 1Hz 心跳；HUD / K 表起步即有数据）。
             StatsSnapshotBroadcaster.pushTo(handler.getPlayer());
         });
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
-                StageProbeServer.onDisconnect(handler.getPlayer().getUuid()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            java.util.UUID uuid = handler.getPlayer().getUuid();
+            StageProbeServer.onDisconnect(uuid);
+            // v8.x · 玩家断线时清理 per-player 广播订阅，避免泄漏到下次同 UUID 重连后还残留旧订阅
+            com.ctt.healthdisplay.server.command.BroadcastSubscribers.onPlayerDisconnect(uuid);
+        });
 
         ServerTickEvents.END_SERVER_TICK.register(DamageProbe::flushTick);
         ServerTickEvents.END_SERVER_TICK.register(PlayerInventoryIndex::tickRefresh);

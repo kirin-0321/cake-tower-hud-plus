@@ -495,7 +495,17 @@ public final class AttackerProbe {
                     n, displayObjective, victimName, victimType, damage, r.layer, r.attackerLabel, r.detail, suffix);
         }
 
-        if (chatBroadcastEnabled && com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastDamageInChat) {
+        // v8.x · 改为 per-player 订阅 + 全局兜底双路由：
+        //   1) 全局 broadcastDamageInChat（编辑 JSON 启用）→ 给全服广播（旧行为，运维兜底）
+        //   2) 任意玩家通过 /ctthd broadcast damage on 订阅 → 仅给订阅者发
+        // 两条路径任一开启就构造 Text 入队，flushBroadcasts 内分别派发。
+        // v8.x · broadcastDamageThreshold：单次 damage < 阈值时不入队（治疗负数也自动过滤）。
+        //        阈值 0（默认）= 全部通过。
+        if (chatBroadcastEnabled
+                && damage >= com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastDamageThreshold
+                && (com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastDamageInChat
+                    || com.ctt.healthdisplay.server.command.BroadcastSubscribers
+                        .hasAnySubscriber(com.ctt.healthdisplay.server.command.BroadcastSubscribers.Channel.DAMAGE))) {
             pendingBroadcasts.add(buildChatLine(n, displayObjective, victimName, damage, r));
         }
     }
@@ -980,16 +990,28 @@ public final class AttackerProbe {
         while ((t = pendingBroadcasts.poll()) != null) snapshot.add(t);
         if (snapshot.isEmpty()) return;
 
+        // v8.x · 双路由：global=true → 全服广播；否则仅发给 per-player 订阅者
+        boolean global = com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastDamageInChat;
+
         int count = snapshot.size();
         int toSend = Math.min(count, MAX_LINES_PER_TICK);
         for (int i = 0; i < toSend; i++) {
-            server.getPlayerManager().broadcast(snapshot.get(i), false);
+            sendDamageLine(server, snapshot.get(i), global);
         }
         if (count > MAX_LINES_PER_TICK) {
             int omitted = count - MAX_LINES_PER_TICK;
             Text summary = Text.literal("  +" + omitted + " 条归属事件已省略（本 tick）")
                     .formatted(Formatting.DARK_GRAY, Formatting.ITALIC);
-            server.getPlayerManager().broadcast(summary, false);
+            sendDamageLine(server, summary, global);
+        }
+    }
+
+    private static void sendDamageLine(MinecraftServer server, Text msg, boolean global) {
+        if (global) {
+            server.getPlayerManager().broadcast(msg, false);
+        } else {
+            com.ctt.healthdisplay.server.command.BroadcastSubscribers.sendTo(
+                    server, com.ctt.healthdisplay.server.command.BroadcastSubscribers.Channel.DAMAGE, msg);
         }
     }
 }

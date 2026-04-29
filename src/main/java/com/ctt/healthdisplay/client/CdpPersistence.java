@@ -46,17 +46,22 @@ import java.util.List;
  * <h2>schema</h2>
  * <pre>{@code
  * {
- *   "schemaVersion": 1,
+ *   "schemaVersion": 2,
  *   "globalTotal":   12345,
  *   "globalKills":   67,
  *   "stageHistory": [
  *     { "key":        { "gameId":"...","tier":"2","floor":"7","stageType":"...","stageNum":"1" },
  *       "dealt":      4500,
  *       "kills":      12,
- *       "durationMs": 180000 }
+ *       "durationMs": 180000,
+ *       "enterMs":    1759158240123 }
  *   ]
  * }
  * }</pre>
+ *
+ * <p>v8.1.0 升 schema v2：StageEntry 新增 {@code enterMs}（关卡<b>首次</b>进入墙钟时间戳）。
+ * 旧 v1 文件加载时该字段缺失为 0；分关表 buildStage 用 stageHistory 迭代序兜底排序，
+ * 保留旧用户体验。新版本的写盘恒为 v2，混用旧版客户端读 v2 文件时会忽略 enterMs（不报错）。
  *
  * <p>用 plain class（非 record）+ {@link StageKeyDto} 包装 StageKey，避开 Gson 对
  * record 反序列化在不同版本下的兼容差异；代码层用 {@link #captureSnapshot} /
@@ -108,20 +113,27 @@ public final class CdpPersistence {
         public long dealt;
         public int kills;
         public long durationMs;
+        /**
+         * v8.1.0 · schema v2 · 关卡<b>首次</b>进入的墙钟时间戳（{@link System#currentTimeMillis}）。
+         * <p>旧 v1 文件无此字段，Gson 反序列化时默认 0；调用方（{@link ClientDamageProbe#applySnapshot}）
+         * 看到 0 则不放进 {@code stageHistoryEnterMs}，由分关表 buildStage 用迭代序兜底。
+         */
+        public long enterMs;
 
         public StageEntry() {}
 
-        public StageEntry(StageKey key, long dealt, int kills, long durationMs) {
+        public StageEntry(StageKey key, long dealt, int kills, long durationMs, long enterMs) {
             this.key        = new StageKeyDto(key);
             this.dealt      = dealt;
             this.kills      = kills;
             this.durationMs = durationMs;
+            this.enterMs    = enterMs;
         }
     }
 
     /** 顶层快照容器。 */
     public static final class Snapshot {
-        public int schemaVersion = 1;
+        public int schemaVersion = 2;
         public long globalTotal;
         public long globalKills;
         public List<StageEntry> stageHistory = new ArrayList<>();

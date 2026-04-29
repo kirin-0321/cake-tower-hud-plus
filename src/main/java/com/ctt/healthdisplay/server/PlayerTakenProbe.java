@@ -80,8 +80,21 @@ public final class PlayerTakenProbe {
             PlayerTakenStats.addTaken(p.getUuid(), name, v, tick);
             totalEventsSeen++;
 
-            if (cfg.broadcastTakenInChat && v >= cfg.broadcastTakenThreshold) {
-                server.getPlayerManager().broadcast(buildChatLine(name, v), false);
+            // v8.x · 双路由：global=true → 全服广播；否则仅发 per-player 订阅者。
+            // 阈值 broadcastTakenThreshold 仍是全局配置（per-player 也共享同一阈值）。
+            if (v >= cfg.broadcastTakenThreshold) {
+                boolean takenGlobal = cfg.broadcastTakenInChat;
+                boolean takenAnySub = com.ctt.healthdisplay.server.command.BroadcastSubscribers
+                        .hasAnySubscriber(com.ctt.healthdisplay.server.command.BroadcastSubscribers.Channel.TAKEN);
+                if (takenGlobal || takenAnySub) {
+                    Text msg = buildChatLine(name, v);
+                    if (takenGlobal) {
+                        server.getPlayerManager().broadcast(msg, false);
+                    } else {
+                        com.ctt.healthdisplay.server.command.BroadcastSubscribers.sendTo(
+                                server, com.ctt.healthdisplay.server.command.BroadcastSubscribers.Channel.TAKEN, msg);
+                    }
+                }
             }
         }
 
