@@ -42,8 +42,9 @@ Install on the **server** (integrated singleplayer counts too). Tested on normal
 - **Live lines** on the team panel: damage, taken, kills, assists, **rolling 5s DPS**; modes: off / current stage / session / both.
 - **Auto-save**: up to **20 past sessions** on disk; periodic + stage transitions + shutdown.
 - **v8 performance**: server-side hot paths fully overhauled—boss-fight TPS recovered to vanilla territory.
+- **v8.1 Magum Trials**: per-floor stats inside MT (~30 floors per difficulty), isolated from main-tower stages so same-id floors don't bucket-collide. Toggle: `collectMagumTrials` (default on).
 
-> 装在服务端（集成单机也算）。9 类伤害分类归属（近战 / 子弹 / 冲击 / 火 / 水 / 冰 / 暗 / 光 / 电），处理队友 / 召唤物 / DoT；击杀 / 助攻 / 承伤一并统计，可开关聊天广播。队友面板嵌入式 KPI 行（4 段开关），含 5s 滚动 DPS。最多保留 20 局历史到磁盘，按周期 / 切关 / 关服自动落盘。**v8 起服务端 hot path 全面重构，boss 战 TPS 回到接近原版水平。**
+> 装在服务端（集成单机也算）。9 类伤害分类归属（近战 / 子弹 / 冲击 / 火 / 水 / 冰 / 暗 / 光 / 电），处理队友 / 召唤物 / DoT；击杀 / 助攻 / 承伤一并统计，可开关聊天广播。队友面板嵌入式 KPI 行（4 段开关），含 5s 滚动 DPS。最多保留 20 局历史到磁盘，按周期 / 切关 / 关服自动落盘。**v8 起服务端 hot path 全面重构，boss 战 TPS 回到接近原版水平。v8.1 起 Magum Trials 副本内逐层独立成桶（每难度约 30 层），与大厅塔同 ID 子关命名空间隔离不合桶；开关 `collectMagumTrials`（默认开）。**
 
 ### Client-only mode (v7+) · 纯客户端模式
 
@@ -54,8 +55,9 @@ No server mod required. Independently samples `DamageShower` particles to keep s
 - **Kill counter** based on `ScoreboardHP` drop + entity destroy (works under map's special HP rules).
 - **K-key stats table** with full-session totals and per-stage breakdown.
 - **Persistence (v8)**: `config/ctt-health-display-cdp.json`, saved on stage change / disconnect / quit; loaded on startup. **[Clear]** button in K-table top bar with confirm dialog.
+- **MT limitation**: MT (Magum Trials) per-floor split requires the **server-side** mod. In client-only mode MT runs are bucketed as generic `MINIGAME`.
 
-> 无需服务端 mod。独立采集 `DamageShower` 粒子保留战绩。HUD 顶栏聚合行：⚔ 全局 / ⚔ 本关 / ☠ 全局 / ☠ 本关 / ⚡ 5s DPS。客户端通过 title + bossbar 自动识别关卡，做分关历史，**休息室不计全局**。基于 `ScoreboardHP` 跌零 + entity 销毁双判定的客户端击杀计数（适配地图特殊血量规则）。K 键统计表含总表 + 分关表。**v8 起数据持久化到 `config/ctt-health-display-cdp.json`，切关 / 断线 / 退出自动写盘，启动加载；K 表新增 [清空] 二次确认按钮。**
+> 无需服务端 mod。独立采集 `DamageShower` 粒子保留战绩。HUD 顶栏聚合行：⚔ 全局 / ⚔ 本关 / ☠ 全局 / ☠ 本关 / ⚡ 5s DPS。客户端通过 title + bossbar 自动识别关卡，做分关历史，**休息室不计全局**。基于 `ScoreboardHP` 跌零 + entity 销毁双判定的客户端击杀计数（适配地图特殊血量规则）。K 键统计表含总表 + 分关表。**v8 起数据持久化到 `config/ctt-health-display-cdp.json`，切关 / 断线 / 退出自动写盘，启动加载；K 表新增 [清空] 二次确认按钮。MT 分关需要服务端也装本 mod；纯客户端模式下 MT 全程归一个 `MINIGAME` 桶。**
 
 ### Config & localization · 配置与本地化
 
@@ -89,6 +91,10 @@ No server mod required. Independently samples `DamageShower` particles to keep s
 **Analytics:** for full server-side stats install this mod on the **server** as well as the client. **Client-only** is fully supported since v7 — you still get the HUD, client-side aggregate damage, kill counter, per-stage history, and persistent stats.
 
 > **战斗分析：** 服务端也装可获完整归属 / 过滤 / 广播。**纯客户端**自 v7 起完整可用——HUD、客户端聚合伤害、击杀计数、分关历史、持久化数据全保留。
+
+> **Version compatibility · 版本兼容性**: v8.1.x changed the `StagePayload` wire format. **Both client and server must be on v8.1.x**; mixing with v8.0.x or earlier will disconnect on packet decode error. Upgrade in lockstep.
+>
+> **v8.1.x 与 v8.0.x 协议不兼容**：客户端与服务端必须**同步升级**到 v8.1.x，混用会在解包时被踢线。
 
 ---
 
