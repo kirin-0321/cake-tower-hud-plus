@@ -58,6 +58,14 @@
   "ctt-health-display.config.option.client_damage_debug_chat": "聊天栏粒子流水: %s",
   "ctt-health-display.config.option.client_kill_debug_chat": "聊天栏击杀报告: %s",
 
+  "ctt-health-display.stage_report.header.stage": "\u2550\u2550\u2550\u2550\u2550\u2550 T%1$sF%2$s \u00b7 %3$s \u00b7 %4$s \u2550\u2550\u2550\u2550\u2550\u2550",
+  "ctt-health-display.stage_report.header.session": "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 \u5168\u5c40 %s \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
+  "ctt-health-display.stage_report.label.team_stage": "[\u5168\u961f\u00b7\u5173]",
+  "ctt-health-display.stage_report.label.team_session": "[\u5168\u961f\u00b7\u5c40]",
+  "ctt-health-display.stage_report.player_row": "%s \u2694%s  \u26E8%s  \u2620%s  \ud83e\udd1d%s",
+  "ctt-health-display.stage_report.team_row": "%s \u2694%s  \u26E8%s  \u2620%s  \ud83e\udd1d%s",
+  "ctt-health-display.stage_report.offline": "  [\u79bb\u7ebf]",
+
   "ctt-health-display.stats.hint.game_not_started": "游戏未开始",
   "ctt-health-display.stats.hint.use_view_stats": "输入 /trigger ViewStats 查看属性",
 

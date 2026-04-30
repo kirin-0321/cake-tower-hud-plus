@@ -66,10 +66,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>{@link #formatNum(long)}：&lt; 10000 用 {@code "%,d"}（带千分逗号），&lt; 1M 用
  * {@code "12.3k"}，&ge; 1M 用 {@code "1.2M"}，与 K 表 / HUD 嵌入式行的口径一致。
  *
- * <h2>关卡名本地化</h2>
- * <p>服务端不知客户端语言，统一传 {@code preferLang="zh_cn"} 给
- * {@link StageNameRegistry#localizedName(StageLocation.Kind, int, String)}：
- * Cake Team Towers 中文社区主流，专用服务器场景未来可由 ConfigScreen 切换。
+ * <h2>关卡名与文案本地化</h2>
+ * <p>聊天栏各行使用 {@link Text#translatable(String, Object...)}，由<b>接收端客户端</b>按语言解析。
+ * 关卡友好名来自 {@link StageNameRegistry}（map 内嵌 en/zh），按
+ * {@link ServerPlayerEntity#getClientOptions()}{@code .language()} 规范化后的代码传给
+ * {@link StageNameRegistry#localizedName(StageLocation.Kind, int, String)}，与 HUD 一致。
  */
 public final class StageReportBroadcaster {
 
@@ -114,7 +115,7 @@ public final class StageReportBroadcaster {
         // v6.6.7 · 双块布局：关 header + n 玩家 + 全队·关 + 局 header + n 玩家 + 全队·局 = 2n + 4
         int linesPerViewer = report.rows.size() * 2 + 4;
         for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-            List<Text> lines = renderLines(report, p.getUuid(), online);
+            List<Text> lines = renderLines(report, p, online);
             for (Text line : lines) p.sendMessage(line, false);
         }
         LOGGER.info("[CTT report] broadcasted stage {} ({} players, {} lines/viewer)",
@@ -139,7 +140,7 @@ public final class StageReportBroadcaster {
      * <p>v6.6.6 起 {@code sumS*} = 全队整局累计；{@code sessionMs} 取自
      * {@link PlayerKillStats#sessionDurationMs()}，用于在 [全队·局] 行尾显示。
      */
-    private record StageReport(StageKey key, String stageName, long durationMs,
+    private record StageReport(StageKey key, long durationMs,
                                List<Row> rows,
                                long sumDealt, long sumTaken,
                                int sumKills, int sumAssists,
@@ -208,7 +209,6 @@ public final class StageReportBroadcaster {
 
         return new StageReport(
                 key,
-                lookupStageName(key),
                 StageBoundaryDispatcher.stageDurationMs(key),
                 rows,
                 sumDealt, sumTaken, sumKills, sumAssists,
@@ -239,40 +239,51 @@ public final class StageReportBroadcaster {
      * <p>颜色：每玩家行——自己 GOLD / 在线 WHITE / 离线 DARK_GRAY；
      * [全队·X] 行 YELLOW；header GOLD。
      */
-    private static List<Text> renderLines(StageReport rep, UUID viewer, Set<UUID> online) {
+    private static List<Text> renderLines(StageReport rep, ServerPlayerEntity viewer, Set<UUID> online) {
         List<Text> out = new ArrayList<>(rep.rows.size() * 2 + 4);
+        String lang = normalizeLang(viewer.getClientOptions().language());
+        UUID vid = viewer.getUuid();
 
         // ── 块 1 · 本关 ──
-        String header1 = String.format("══════ T%sF%s · %s · %s ══════",
-                str(rep.key.tier()), str(rep.key.floor()),
-                rep.stageName, formatDuration(rep.durationMs));
-        out.add(Text.literal(header1).formatted(Formatting.GOLD));
+        out.add(Text.translatable("ctt-health-display.stage_report.header.stage",
+                        str(rep.key.tier()), str(rep.key.floor()),
+                        lookupStageName(rep.key, lang),
+                        formatDuration(rep.durationMs))
+                .formatted(Formatting.GOLD));
 
         for (Row r : rep.rows) {
             out.add(renderPlayerLine(r.uuid, r.name,
                     r.dealt, r.taken, r.kills, r.assists,
-                    viewer, online));
+                    vid, online));
         }
-        out.add(renderTeamLine("[全队·关]",
+        out.add(renderTeamLine(false,
                 rep.sumDealt, rep.sumTaken, rep.sumKills, rep.sumAssists));
 
         // ── 块 2 · 整局 ──
-        String header2 = String.format("══════════ 全局 %s ══════════",
-                formatDuration(rep.sessionMs));
-        out.add(Text.literal(header2).formatted(Formatting.GOLD));
+        out.add(Text.translatable("ctt-health-display.stage_report.header.session",
+                        formatDuration(rep.sessionMs))
+                .formatted(Formatting.GOLD));
 
         for (Row r : rep.rows) {
             out.add(renderPlayerLine(r.uuid, r.name,
                     r.sDealt, r.sTaken, r.sKills, r.sAssists,
-                    viewer, online));
+                    vid, online));
         }
-        out.add(renderTeamLine("[全队·局]",
+        out.add(renderTeamLine(true,
                 rep.sumSDealt, rep.sumSTaken, rep.sumSKills, rep.sumSAssists));
 
         return out;
     }
 
-    /** 单个玩家行：自己 GOLD / 在线 WHITE / 离线 DARK_GRAY + 末尾 "[离线]"。 */
+    /** Minecraft 语言代码 → StageNameRegistry / translatable 常用规范化（zh 前缀 → zh_cn，其余 → en_us）。 */
+    private static String normalizeLang(String code) {
+        if (code == null || code.isEmpty()) return "en_us";
+        String c = code.toLowerCase();
+        if (c.startsWith("zh")) return "zh_cn";
+        return "en_us";
+    }
+
+    /** 单个玩家行：自己 GOLD / 在线 WHITE / 离线 DARK_GRAY + 末尾离线后缀（i18n）。 */
     private static MutableText renderPlayerLine(UUID uuid, String name,
                                                 long dealt, long taken,
                                                 int kills, int assists,
@@ -284,35 +295,37 @@ public final class StageReportBroadcaster {
         else if (offline) color = Formatting.DARK_GRAY;
         else color = Formatting.WHITE;
 
-        String body = formatStatsBody(" " + name, dealt, taken, kills, assists);
-        MutableText line = Text.literal(body).formatted(color);
+        String nameCol = padRightToPx(" " + name, NAME_COL_PX);
+        MutableText line = Text.translatable("ctt-health-display.stage_report.player_row",
+                        Text.literal(nameCol),
+                        Text.literal(pad(formatNum(dealt), DEALT_PAD)),
+                        Text.literal(pad(formatNum(taken), TAKEN_PAD)),
+                        Text.literal(pad(Integer.toString(kills), KILLS_PAD)),
+                        Text.literal(pad(Integer.toString(assists), ASSIST_PAD)))
+                .formatted(color);
         if (offline) {
-            line.append(Text.literal("  [离线]").formatted(Formatting.DARK_GRAY));
+            line.append(Text.translatable("ctt-health-display.stage_report.offline")
+                    .formatted(Formatting.DARK_GRAY));
         }
         return line;
     }
 
-    /** 全队汇总行：YELLOW。label 形如 "[全队·关]" / "[全队·局]"。 */
-    private static MutableText renderTeamLine(String label,
+    /**
+     * 全队汇总行：YELLOW。{@code sessionScope=true} → [Team · Session] / [全队·局] 文案键。
+     */
+    private static MutableText renderTeamLine(boolean sessionScope,
                                               long dealt, long taken,
                                               int kills, int assists) {
-        String body = formatStatsBody(" " + label, dealt, taken, kills, assists);
-        return Text.literal(body).formatted(Formatting.YELLOW);
-    }
-
-    /**
-     * 把名字 / 标签 + 4 列数字组合成对齐后的字符串。
-     * <p>名字列 padding 到 {@link #NAME_COL_PX} 像素，数字列用字符 padding（数字字体
-     * 等宽）。整体输出形如 {@code " Simon          ⚔ 1,240  ⛨   230  ☠ 12  🤝  4"}。
-     */
-    private static String formatStatsBody(String namePart,
-                                          long dealt, long taken,
-                                          int kills, int assists) {
-        return padRightToPx(namePart, NAME_COL_PX)
-                + " ⚔" + pad(formatNum(dealt), DEALT_PAD)
-                + "  ⛨" + pad(formatNum(taken), TAKEN_PAD)
-                + "  ☠" + pad(Integer.toString(kills), KILLS_PAD)
-                + "  🤝" + pad(Integer.toString(assists), ASSIST_PAD);
+        String labelKey = sessionScope
+                ? "ctt-health-display.stage_report.label.team_session"
+                : "ctt-health-display.stage_report.label.team_stage";
+        return Text.translatable("ctt-health-display.stage_report.team_row",
+                        Text.translatable(labelKey),
+                        Text.literal(pad(formatNum(dealt), DEALT_PAD)),
+                        Text.literal(pad(formatNum(taken), TAKEN_PAD)),
+                        Text.literal(pad(Integer.toString(kills), KILLS_PAD)),
+                        Text.literal(pad(Integer.toString(assists), ASSIST_PAD)))
+                .formatted(Formatting.YELLOW);
     }
 
     // ------------------------------------------------------------------
@@ -328,12 +341,12 @@ public final class StageReportBroadcaster {
         return ids;
     }
 
-    /** 关卡 friendly 名：StageNameRegistry 命中→中文名；否则兜底 "Boss12" 之类。 */
-    private static String lookupStageName(StageKey key) {
+    /** 关卡 friendly 名：StageNameRegistry 按语言 pick；否则兜底 "Boss12" 之类。 */
+    private static String lookupStageName(StageKey key, String lang) {
         StageLocation.Kind kind = stageTypeToKind(key.stageType());
         int num = parseInt(key.stageNum());
         if (kind != null && num > 0) {
-            String n = StageNameRegistry.localizedName(kind, num, "zh_cn");
+            String n = StageNameRegistry.localizedName(kind, num, lang);
             if (n != null && !n.isEmpty()) return n;
         }
         String type = key.stageType() == null ? "?" : key.stageType();

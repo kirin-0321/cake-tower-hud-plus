@@ -67,13 +67,13 @@ public class ModConfig {
      * 嵌入式 HUD 模式（设计 §5.4 / §9）。控制队友面板第二/三/四行的显示：
      * <ul>
      *   <li>0 = OFF：完全关掉，回到 v5.3.3 单行</li>
-     *   <li>1 = ONLY_STAGE：只显示"关:"行（当前/上一关分桶切片）</li>
+     *   <li>1 = ONLY_STAGE：只显示"关:"行（当前/上一关分桶切片）（默认）</li>
      *   <li>2 = ONLY_SESSION：只显示"局:"行（整局累计）</li>
-     *   <li>3 = BOTH：两行都显示（默认）</li>
+     *   <li>3 = BOTH：两行都显示</li>
      * </ul>
      * 在大厅 / Game Over kind 下整组 stats 行强制隐藏（设计 §5.6）。
      */
-    public int embeddedHudMode = EMBED_BOTH;
+    public int embeddedHudMode = EMBED_ONLY_STAGE;
     public static final int EMBED_OFF          = 0;
     public static final int EMBED_ONLY_STAGE   = 1;
     public static final int EMBED_ONLY_SESSION = 2;
@@ -155,7 +155,7 @@ public class ModConfig {
         }
         // v7.1.2 · embeddedHudMode 范围校验（防手改 JSON 出非法值导致循环按钮 (x+1)%4 异常）
         if (embeddedHudMode < EMBED_OFF || embeddedHudMode > EMBED_BOTH) {
-            embeddedHudMode = EMBED_BOTH;
+            embeddedHudMode = EMBED_ONLY_STAGE;
         }
     }
 

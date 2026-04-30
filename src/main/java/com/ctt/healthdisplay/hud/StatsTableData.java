@@ -327,38 +327,64 @@ public final class StatsTableData {
     /**
      * 关卡名本地化。
      * <ol>
-     *   <li>v7.0.15 · stageType 末尾带 {@code "@<name>"}（detector 客户端 fallback 路径写入）→
-     *       直接取 @ 后字符串（已是 vanilla title 副标题，例如 "荣耀道场 [基础]" / "高塔"）</li>
-     *   <li>命中失败 → 走 {@link StageNameRegistry#localizedName}（服务端 payload 老路径）</li>
-     *   <li>仍失败 → 用 {@code stageType + stageNum}（"Boss12"/"Dungeon7"）兜底</li>
+     *   <li><b>优先</b> {@link StageNameRegistry#localizedName(StageLocation.Kind, int)} ——
+     *       按客户端语言从内置 map 取 en/zh（例如英文客户端显示 "Garden of Hope"）。</li>
+     *   <li>detector 路径 {@code STAGE_DUNGEON@副标题} / 服务端 {@code dungeon} 均需能解析出
+     *       {@link StageLocation.Kind} + {@code stageNum}（见 {@link #resolveKindFromStageType}）。</li>
+     *   <li>注册表未命中 → 再取 {@code @} 后字符串（vanilla 副标题原文，语种随地图包）。</li>
+     *   <li>仍不行 → {@code stageType + stageNum} 兜底。</li>
      * </ol>
      */
     private static String localizeStageName(StageKey key) {
         if (key == null) return "?";
         String type = key.stageType();
+        int num = parseIntOrZero(key.stageNum());
+
+        StageLocation.Kind kind = resolveKindFromStageType(type);
+        if (kind != null && num > 0) {
+            String name = StageNameRegistry.localizedName(kind, num);
+            if (name != null && !name.isEmpty()) return name;
+        }
+
         if (type != null) {
             int at = type.indexOf('@');
             if (at >= 0 && at < type.length() - 1) {
                 return type.substring(at + 1);
             }
         }
-        StageLocation.Kind kind = stageTypeToKind(type);
-        int num = parseIntOrZero(key.stageNum());
-        if (kind != null && num > 0) {
-            String name = StageNameRegistry.localizedName(kind, num);
-            if (name != null && !name.isEmpty()) return name;
+
+        // Fallback：类型名 + 编号（纯服务端 stageType，无 @）
+        String baseForPretty = type;
+        if (type != null) {
+            int at = type.indexOf('@');
+            if (at > 0) baseForPretty = type.substring(0, at);
         }
-        // Fallback：类型名 + 编号
-        String pretty = type == null ? "?" : switch (type) {
+        String pretty = baseForPretty == null ? "?" : switch (baseForPretty) {
             case "boss"    -> "Boss";
             case "mboss"   -> "MiniBoss";
             case "dungeon" -> "Dungeon";
             case "shop"    -> "Shop";
             case "ally"    -> "Ally";
             case "misc"    -> "Misc";
-            default        -> type;
+            default        -> baseForPretty;
         };
         return pretty + (num > 0 ? Integer.toString(num) : "");
+    }
+
+    /**
+     * 服务端：{@code dungeon} / {@code boss} / …；客户端 detector：{@code STAGE_DUNGEON@…} 的 {@code STAGE_DUNGEON} 前缀。
+     */
+    private static StageLocation.Kind resolveKindFromStageType(String type) {
+        if (type == null) return null;
+        int at = type.indexOf('@');
+        String base = at >= 0 ? type.substring(0, at) : type;
+        StageLocation.Kind k = stageTypeToKind(base);
+        if (k != null) return k;
+        try {
+            return StageLocation.Kind.valueOf(base);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static StageLocation.Kind stageTypeToKind(String t) {
