@@ -107,6 +107,12 @@ public class CttHealthDisplay implements ClientModInitializer {
             // 集成 server / LAN host 场景：CttStatsServer.onInitialize 已注册过，忽略
         }
         ClientPlayNetworking.registerGlobalReceiver(StatsSnapshotPayload.ID, (payload, ctx) -> {
+            // v8.1.1 · 未来版本服务端 (ver > CURRENT_VERSION) → 当前客户端：codec 已经把不可解
+            // 析的帧降级为空快照（ver 字段沿用原值），这里识别后直接丢弃，让 latest 保留上一帧
+            // 真实数据，避免 UI 间歇性闪空。下次服务端降级 / 客户端升级后自动恢复。
+            if (Byte.toUnsignedInt(payload.version()) > Byte.toUnsignedInt(StatsSnapshotPayload.CURRENT_VERSION)) {
+                return;
+            }
             ClientStatsCache.update(payload);
         });
 

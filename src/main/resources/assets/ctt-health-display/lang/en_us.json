@@ -59,6 +59,7 @@
   "ctt-health-display.config.option.client_kill_debug_chat": "Per-kill chat log: %s",
 
   "ctt-health-display.stage_report.header.stage": "\u2550\u2550\u2550\u2550\u2550\u2550 T%1$sF%2$s \u00b7 %3$s \u00b7 %4$s \u2550\u2550\u2550\u2550\u2550\u2550",
+  "ctt-health-display.stage_report.header.stage_mt": "\u2550\u2550\u2550\u2550\u2550\u2550 MT D%1$s\u00b7F%2$s \u00b7 %3$s \u00b7 %4$s \u2550\u2550\u2550\u2550\u2550\u2550",
   "ctt-health-display.stage_report.header.session": "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 Session %s \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
   "ctt-health-display.stage_report.label.team_stage": "[Team \u00b7 Stage]",
   "ctt-health-display.stage_report.label.team_session": "[Team \u00b7 Session]",
@@ -96,6 +97,7 @@
   "ctt-health-display.config.server.option.filter_init_hp_jumps": "Filter initial HP jumps: %s",
   "ctt-health-display.config.server.option.filter_suspect_victims": "Filter suspect victim spikes: %s",
   "ctt-health-display.config.server.option.suspect_victim_threshold": "Suspect victim threshold: %s",
+  "ctt-health-display.config.server.option.collect_magum_trials": "Collect Magum Trials per-floor: %s",
   "ctt-health-display.config.server.info.init_hp_values": "\u00a78Initial HP list: %s",
   "ctt-health-display.config.server.info.suspect_victims": "\u00a78Suspect victims: %s"
 }

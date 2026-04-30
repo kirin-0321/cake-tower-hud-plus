@@ -343,8 +343,10 @@ public final class ClientStageProbe {
             int breakRoomId, int gameOver, int miniGame, int checkpoint) {
         boolean cp = checkpoint == 1;
 
+        // v8.1.0 · 客户端 fallback 不识别 MT 上下文（详见 docs/MAGUM_TRIALS_STAGE_TRACKING.md §6.4），
+        // 统一走 compat() 工厂，inMagumTrials 默认 false。MT 分关功能仅在双端装 mod 时由服务端权威路径生效。
         if (miniGame > 0) {
-            return new StagePayload(K_MINIGAME, tier, floor, 0,
+            return StagePayload.compat(K_MINIGAME, tier, floor, 0,
                     (byte) breakRoomId, (byte) miniGame, GO_NONE, cp);
         }
         if (gameOver >= 1) {
@@ -352,32 +354,32 @@ public final class ClientStageProbe {
             if (gameOver >= 100)      phase = GO_LOCKED;
             else if (gameOver == 99)  phase = GO_CONTINUE;
             else                       phase = GO_COUNTDOWN;
-            return new StagePayload(K_GAME_OVER, tier, floor, gameOver,
+            return StagePayload.compat(K_GAME_OVER, tier, floor, gameOver,
                     (byte) breakRoomId, (byte) miniGame, phase, cp);
         }
         if (boss > 0)
-            return new StagePayload(K_STAGE_BOSS, tier, floor, boss,
+            return StagePayload.compat(K_STAGE_BOSS, tier, floor, boss,
                     (byte) breakRoomId, (byte) miniGame, GO_NONE, cp);
         if (mboss > 0)
-            return new StagePayload(K_STAGE_MBOSS, tier, floor, mboss,
+            return StagePayload.compat(K_STAGE_MBOSS, tier, floor, mboss,
                     (byte) breakRoomId, (byte) miniGame, GO_NONE, cp);
         if (dungeon > 0)
-            return new StagePayload(K_STAGE_DUNGEON, tier, floor, dungeon,
+            return StagePayload.compat(K_STAGE_DUNGEON, tier, floor, dungeon,
                     (byte) breakRoomId, (byte) miniGame, GO_NONE, cp);
         if (shop > 0)
-            return new StagePayload(K_STAGE_SHOP, tier, floor, shop,
+            return StagePayload.compat(K_STAGE_SHOP, tier, floor, shop,
                     (byte) breakRoomId, (byte) miniGame, GO_NONE, cp);
         if (ally > 0)
-            return new StagePayload(K_STAGE_ALLY, tier, floor, ally,
+            return StagePayload.compat(K_STAGE_ALLY, tier, floor, ally,
                     (byte) breakRoomId, (byte) miniGame, GO_NONE, cp);
         if (misc > 0)
-            return new StagePayload(K_STAGE_MISC, tier, floor, misc,
+            return StagePayload.compat(K_STAGE_MISC, tier, floor, misc,
                     (byte) breakRoomId, (byte) miniGame, GO_NONE, cp);
 
         // holders 全 0：服务端会区分 LOBBY (无 CTT tag) vs BREAK_ROOM (有 CTT tag)。
         // 客户端拿不到 commandTags，无法分辨——统一返回 BREAK_ROOM 作为兜底。
         // 主大厅时玩家不打怪，二者都不进战斗关 stat，体感无差。
-        return new StagePayload(K_BREAK_ROOM, tier, floor, 0,
+        return StagePayload.compat(K_BREAK_ROOM, tier, floor, 0,
                 (byte) breakRoomId, (byte) miniGame, GO_NONE, cp);
     }
 

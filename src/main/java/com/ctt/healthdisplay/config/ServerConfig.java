@@ -44,7 +44,7 @@ public class ServerConfig {
      * （疑似 Prop / NPC 标签命中），v6.7.4 改默认 false——但已经持久化 JSON 的 true 值
      * 不会因仅改字段默认而被覆盖，必须靠版本号迁移强制覆写。
      */
-    public static final int CURRENT_CONFIG_VERSION = 3;
+    public static final int CURRENT_CONFIG_VERSION = 4;
 
     public static ServerConfig INSTANCE = new ServerConfig();
 
@@ -286,6 +286,25 @@ public class ServerConfig {
      * 把该关视为"非战斗关"，三家 stats 的 {@code isCollecting} 检查直接返回 false。
      */
     public String[] blockedStages = new String[]{"dungeon:47"};
+
+    // ===== Magum Trials 分关采集（v8.1.0 引入）=====
+    /**
+     * 是否把 Magum Trials（{@code #LobbyMiniGame CTT == 4}）按"30 关分关"采集，而不是
+     * 一刀切打成 MINIGAME 黑箱。
+     *
+     * <ul>
+     *   <li><b>true（默认）</b>：MT 内每一关（含 0 数据的纯路过 shop / ally）独立成 stageKey 桶，
+     *       正常 ENTER / EXIT / 广播 / 持久化。stageType 加 {@code mt_} 前缀避免与大厅塔同 ID
+     *       子关合桶；tier 维度用 {@code #MagumTrialDifficulty GameScores}（1..10）替代 {@code #Tier CTT}。</li>
+     *   <li><b>false</b>：完全回到 v8.0.x 老行为——MT 全程 MINIGAME 黑箱、不采集、frozen。
+     *       线上出问题时的快速回退闸。</li>
+     * </ul>
+     *
+     * <p>详见 {@code docs/MAGUM_TRIALS_STAGE_TRACKING.md}。
+     *
+     * <p>v8.1.0 引入；旧 JSON 升级时缺字段，Gson 自动落默认值 true，无需 migrate 分支。
+     */
+    public boolean collectMagumTrials = true;
 
     // ===== 可疑 victim 过滤（按显示名子串 + 阈值）=====
     /** 是否过滤"特定怪物 + 单次伤害 ≥ {@link #suspectVictimDamageThreshold}"组合。 */

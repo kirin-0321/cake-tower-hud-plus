@@ -60,6 +60,10 @@ public final class StageLocation {
      * 副标题文本（例如 "荣耀道场 [基础]" / "主商店" / "高塔"）。
      * 服务端 payload 不带这个字段（{@link #fromPayload} 默认 ""），
      * 客户端 detector 写入；{@link #formatted} 在非空时优先使用，覆盖 stageNum 编号。
+     *
+     * <p>v8.1.0 · 新增 {@link #inMagumTrials}：服务端探测到 {@code #LobbyMiniGame == 4} 且
+     * {@code collectMagumTrials} 开启时为 true，{@link #formatted} 据此把 STAGE_* 行的
+     * "T{tier}·F{floor}" 头替换为 "MT D{tier}·F{floor}"，并把 BREAK_ROOM/GAME_OVER 加 "[MT]" 标签。
      */
     public record Snapshot(
             Kind kind,
@@ -70,7 +74,8 @@ public final class StageLocation {
             int miniGameId,
             GameOverPhase gameOverPhase,
             boolean checkpoint,
-            String stageName
+            String stageName,
+            boolean inMagumTrials
     ) {
         /** v7.0.15 紧凑构造器：归一化 stageName == null → ""。 */
         public Snapshot {
@@ -78,7 +83,7 @@ public final class StageLocation {
         }
 
         public static Snapshot unknown() {
-            return new Snapshot(Kind.UNKNOWN, 0, 0, 0, 0, 0, GameOverPhase.NONE, false, "");
+            return new Snapshot(Kind.UNKNOWN, 0, 0, 0, 0, 0, GameOverPhase.NONE, false, "", false);
         }
 
         /** 由网络包字段反序列化（由 ClientStageLocation receiver 调用）。 */
@@ -94,7 +99,8 @@ public final class StageLocation {
                     p.miniGameId() & 0xFF,
                     PHASES[gi],
                     p.checkpoint(),
-                    "" // 服务端 payload 不带 stageName，由本地 detector 在客户端 fallback 路径写入
+                    "", // 服务端 payload 不带 stageName，由本地 detector 在客户端 fallback 路径写入
+                    p.inMagumTrials()
             );
         }
 
@@ -109,13 +115,17 @@ public final class StageLocation {
          *   {@code "副本 · 荣耀道场 [基础]"} / {@code "休息室 · 高塔 (16)"}。
          * 否则（服务端 payload 路径） → 沿用 v6.5.6 老格式
          *   {@code "Boss · T1·F5 · #15  ◇本地化名"}。
+         *
+         * <p>v8.1.0 · {@link #inMagumTrials} 为 true 时：STAGE_* 行的 "T{t}·F{f}" 头变 "MT D{t}·F{f}"；
+         * BREAK_ROOM 行强制使用 MT 中央选关区文案；GAME_OVER 加 "[MT]" 前缀。
          */
         public Text formatted() {
             return switch (kind) {
                 case LOBBY -> Text.literal("\u4e3b\u5927\u5385").formatted(Formatting.GRAY);
 
                 case BREAK_ROOM -> Text.literal(
-                        "\u4f11\u606f\u5ba4 \u00b7 "
+                        (inMagumTrials ? "[MT] " : "")
+                                + "\u4f11\u606f\u5ba4 \u00b7 "
                                 // detector 路径：stageName 形如 "高塔 (21/30)"，已含进度括号
                                 // payload 路径：stageName 为空 → 用 id 翻译表 + (floor)
                                 + (stageName.isEmpty()
@@ -124,19 +134,20 @@ public final class StageLocation {
                                 + (checkpoint ? "  \u2606\u5b58\u6863\u70b9" : "")
                 ).formatted(Formatting.YELLOW);
 
-                case STAGE_BOSS  -> stageLine("Boss",        tier, floor, stageNum, stageName, kind, Formatting.LIGHT_PURPLE);
-                case STAGE_MBOSS -> stageLine("MiniBoss",    tier, floor, stageNum, stageName, kind, Formatting.DARK_PURPLE);
-                case STAGE_DUNGEON -> stageLine("\u526f\u672c", tier, floor, stageNum, stageName, kind, Formatting.AQUA);
-                case STAGE_SHOP  -> stageLine("\u5546\u5e97",   tier, floor, stageNum, stageName, kind, Formatting.GOLD);
-                case STAGE_ALLY  -> stageLine("\u76df\u53cb",   tier, floor, stageNum, stageName, kind, Formatting.GREEN);
-                case STAGE_MISC  -> stageLine("\u6742\u9879",   tier, floor, stageNum, stageName, kind, Formatting.WHITE);
+                case STAGE_BOSS  -> stageLine("Boss",        tier, floor, stageNum, stageName, kind, inMagumTrials, Formatting.LIGHT_PURPLE);
+                case STAGE_MBOSS -> stageLine("MiniBoss",    tier, floor, stageNum, stageName, kind, inMagumTrials, Formatting.DARK_PURPLE);
+                case STAGE_DUNGEON -> stageLine("\u526f\u672c", tier, floor, stageNum, stageName, kind, inMagumTrials, Formatting.AQUA);
+                case STAGE_SHOP  -> stageLine("\u5546\u5e97",   tier, floor, stageNum, stageName, kind, inMagumTrials, Formatting.GOLD);
+                case STAGE_ALLY  -> stageLine("\u76df\u53cb",   tier, floor, stageNum, stageName, kind, inMagumTrials, Formatting.GREEN);
+                case STAGE_MISC  -> stageLine("\u6742\u9879",   tier, floor, stageNum, stageName, kind, inMagumTrials, Formatting.WHITE);
 
                 case MINIGAME -> Text.literal(
                         "\u5c0f\u6e38\u620f \u00b7 " + miniGameName(miniGameId)
                 ).formatted(Formatting.AQUA);
 
                 case GAME_OVER -> Text.literal(
-                        "Game Over \u00b7 " + gameOverPhaseName(gameOverPhase)
+                        (inMagumTrials ? "[MT] " : "")
+                                + "Game Over \u00b7 " + gameOverPhaseName(gameOverPhase)
                 ).formatted(Formatting.RED);
 
                 case UNKNOWN -> Text.literal(
@@ -150,11 +161,14 @@ public final class StageLocation {
          * <ul>
          *   <li>stageName 非空：{@code "<前缀> · T<t>·F<f> · <stageName>"}（detector 路径，无 #编号）</li>
          *   <li>stageName 为空：{@code "<前缀> · T<t>·F<f> · #<n>  ◇<registry 查到的名>"}（payload 老路径）</li>
+         *   <li>v8.1.0 · {@code inMagumTrials} → 头变成 {@code "<前缀> · MT D<t>·F<f>"}</li>
          * </ul>
          */
         private static Text stageLine(String prefix, int tier, int floor, int stageNum,
-                                       String stageName, Kind kind, Formatting color) {
-            String head = String.format("%s \u00b7 T%d\u00b7F%d", prefix, tier, floor);
+                                       String stageName, Kind kind, boolean inMagumTrials, Formatting color) {
+            String head = inMagumTrials
+                    ? String.format("%s \u00b7 MT D%d\u00b7F%d", prefix, tier, floor)
+                    : String.format("%s \u00b7 T%d\u00b7F%d", prefix, tier, floor);
             String full;
             if (!stageName.isEmpty()) {
                 full = head + " \u00b7 " + stageName;

@@ -115,13 +115,18 @@ public final class StatsTableScreen extends Screen {
     // v6.6.7 · 列宽收紧：玩家 72→60（英文名 ~50px 后留 10px 即可，中文名 16-32px 绰绰有余），
     // ⏱ 40→34（MM:SS 仅 5 字符 ~18px），保证总末端 ≤ 360（PANEL_W - PANEL_PAD_X * 2），
     // 不再被右侧滚动条裁掉。
+    // v8.1.0 · MT 分关采集后 tierFloorLabel 由 "T1F8"（~26px）扩展为 "MT·D1·F6"（~46px），
+    //   34px tier 列会被截断到下一列覆盖（参见反馈截图）。Tier 加 16 (34→50)、Stage 整体右移 16
+    //   (x 34→50)，Player 列左挪并收窄 16 (x 122→138, w 60→44)，dealt 起所有右侧列保持原位。
+    //   Player 列收窄后英文名 9 字符（~54px）会轻微越界到 dealt 数字左侧，但 dealt 是右对齐
+    //   且短数字（"207" / "1.2k"）远在右端，实际只覆盖空白区，不视觉冲突。
     private static final Col[] STAGE_COLS = new Col[] {
             new Col(Text.translatable("ctt-health-display.stats_table.col.tier"),
-                                         0,  34, null,                                  TEXT_WHITE,        false),
+                                         0,  50, null,                                  TEXT_WHITE,        false),
             new Col(Text.translatable("ctt-health-display.stats_table.col.stage"),
-                                        34,  76, null,                                  TEXT_WHITE,        false),
+                                        50,  76, null,                                  TEXT_WHITE,        false),
             new Col(Text.translatable("ctt-health-display.stats_table.col.player"),
-                                       122,  60, null,                                  TEXT_WHITE,        false),
+                                       138,  44, null,                                  TEXT_WHITE,        false),
             new Col(Text.literal("\u2694"),
                                        184,  46, null,                                  TEXT_ICON_DEALT,   true),
             new Col(Text.literal("\u26E8"),

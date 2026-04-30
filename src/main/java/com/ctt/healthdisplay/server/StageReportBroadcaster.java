@@ -245,7 +245,12 @@ public final class StageReportBroadcaster {
         UUID vid = viewer.getUuid();
 
         // ── 块 1 · 本关 ──
-        out.add(Text.translatable("ctt-health-display.stage_report.header.stage",
+        // v8.1.0 · MT 关使用专用 header 翻译键：tier 显示成 "难度 N" 而不是 "T N"
+        boolean mt = isMtStageType(rep.key.stageType());
+        String headerKey = mt
+                ? "ctt-health-display.stage_report.header.stage_mt"
+                : "ctt-health-display.stage_report.header.stage";
+        out.add(Text.translatable(headerKey,
                         str(rep.key.tier()), str(rep.key.floor()),
                         lookupStageName(rep.key, lang),
                         formatDuration(rep.durationMs))
@@ -341,7 +346,13 @@ public final class StageReportBroadcaster {
         return ids;
     }
 
-    /** 关卡 friendly 名：StageNameRegistry 按语言 pick；否则兜底 "Boss12" 之类。 */
+    /**
+     * 关卡 friendly 名：StageNameRegistry 按语言 pick；否则兜底 "Boss12" 之类。
+     *
+     * <p>v8.1.0 · MT 关（{@code stageType} 以 {@code mt_} 开头）：StageNameRegistry 复用 base type
+     * 的翻译表（mt_dungeon → dungeon），结果直接返回；外层调用方负责加 "[MT 难度N·FM]" 装饰
+     * （由专用 header 翻译键渲染，无需在此处拼接）。
+     */
     private static String lookupStageName(StageKey key, String lang) {
         StageLocation.Kind kind = stageTypeToKind(key.stageType());
         int num = parseInt(key.stageNum());
@@ -349,7 +360,7 @@ public final class StageReportBroadcaster {
             String n = StageNameRegistry.localizedName(kind, num, lang);
             if (n != null && !n.isEmpty()) return n;
         }
-        String type = key.stageType() == null ? "?" : key.stageType();
+        String type = baseStageType(key.stageType());
         String pretty = switch (type) {
             case "boss"    -> "Boss";
             case "mboss"   -> "MiniBoss";
@@ -364,7 +375,9 @@ public final class StageReportBroadcaster {
 
     private static StageLocation.Kind stageTypeToKind(String t) {
         if (t == null) return null;
-        return switch (t) {
+        // v8.1.0 · mt_* 前缀剥离：mt_boss → boss → STAGE_BOSS（registry 复用同一翻译表）
+        String base = baseStageType(t);
+        return switch (base) {
             case "boss"    -> StageLocation.Kind.STAGE_BOSS;
             case "mboss"   -> StageLocation.Kind.STAGE_MBOSS;
             case "dungeon" -> StageLocation.Kind.STAGE_DUNGEON;
@@ -373,6 +386,18 @@ public final class StageReportBroadcaster {
             case "misc"    -> StageLocation.Kind.STAGE_MISC;
             default        -> null;
         };
+    }
+
+    /** v8.1.0 · 剥离可能的 {@code mt_} 前缀，返回 base stageType；null 兜底返回 "?"。 */
+    private static String baseStageType(String t) {
+        if (t == null) return "?";
+        if (t.startsWith("mt_")) return t.substring(3);
+        return t;
+    }
+
+    /** v8.1.0 · stageType 是否为 MT 上下文（{@code mt_} 前缀）。 */
+    private static boolean isMtStageType(String t) {
+        return t != null && t.startsWith("mt_");
     }
 
     private static int parseInt(String s) {

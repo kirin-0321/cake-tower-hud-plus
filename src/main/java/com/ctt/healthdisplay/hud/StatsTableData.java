@@ -309,8 +309,11 @@ public final class StatsTableData {
 
             rows.sort(Comparator.comparingLong(PlayerRow::dealt).reversed());
 
-            String tierFloor = String.format("T%sF%s",
-                    safe(key.tier()), safe(key.floor()));
+            // v8.1.0 · MT 关：tierFloor 显示成 "MT·D{difficulty}·F{floor}" 而不是 "T{tier}F{floor}"
+            // 让玩家在分关表里一眼区分"主大厅 T1F8 玛古姆"和"MT 难度5·F8 玛古姆"。
+            String tierFloor = isMtStageType(key.stageType())
+                    ? String.format("MT\u00b7D%s\u00b7F%s", safe(key.tier()), safe(key.floor()))
+                    : String.format("T%sF%s", safe(key.tier()), safe(key.floor()));
             String name = localizeStageName(key);
             // v7.0.15 · CDP fallback 桶的"进行中"判定：当前桶 = inProgress
             boolean inProgress = ClientStatsCache.isStageInProgress(key)
@@ -358,6 +361,8 @@ public final class StatsTableData {
         if (type != null) {
             int at = type.indexOf('@');
             if (at > 0) baseForPretty = type.substring(0, at);
+            // v8.1.0 · 剥离 mt_ 前缀，让兜底 pretty name 也归一化（MT 标记由 tierFloorLabel 单独承载）
+            if (baseForPretty.startsWith("mt_")) baseForPretty = baseForPretty.substring(3);
         }
         String pretty = baseForPretty == null ? "?" : switch (baseForPretty) {
             case "boss"    -> "Boss";
@@ -389,7 +394,9 @@ public final class StatsTableData {
 
     private static StageLocation.Kind stageTypeToKind(String t) {
         if (t == null) return null;
-        return switch (t) {
+        // v8.1.0 · 剥离 MT 命名空间前缀，使 mt_dungeon 复用 dungeon 翻译表
+        String base = t.startsWith("mt_") ? t.substring(3) : t;
+        return switch (base) {
             case "boss"    -> StageLocation.Kind.STAGE_BOSS;
             case "mboss"   -> StageLocation.Kind.STAGE_MBOSS;
             case "dungeon" -> StageLocation.Kind.STAGE_DUNGEON;
@@ -398,6 +405,11 @@ public final class StatsTableData {
             case "misc"    -> StageLocation.Kind.STAGE_MISC;
             default        -> null;
         };
+    }
+
+    /** v8.1.0 · stageType 是否为 MT 命名空间（{@code mt_} 前缀）。 */
+    private static boolean isMtStageType(String t) {
+        return t != null && t.startsWith("mt_");
     }
 
     private static int parseIntOrZero(String s) {

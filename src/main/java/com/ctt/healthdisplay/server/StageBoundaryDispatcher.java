@@ -196,7 +196,11 @@ public final class StageBoundaryDispatcher {
     }
 
     private static boolean isT1F1(StageKey k) {
-        return k != null && "1".equals(k.tier()) && "1".equals(k.floor());
+        if (k == null) return false;
+        // v8.1.0 · MT 难度1·F1 不应触发主游戏 T1F1 自动清零（命名空间不同）。
+        // mt_ 前缀的 stageType 直接排除。
+        if (k.stageType() != null && k.stageType().startsWith("mt_")) return false;
+        return "1".equals(k.tier()) && "1".equals(k.floor());
     }
 
     /**
@@ -254,7 +258,19 @@ public final class StageBoundaryDispatcher {
         if (!isStage) {
             return new PlayerStage(null, false, k);
         }
+
+        // v8.1.0 · MT 防御：datapack 在某些极短瞬间可能让 #Floor CTT 临时归 0，
+        // 要避免被采样到产生 floor=0 的空桶污染。MT 内 floor 应当始终 >= 1（gamestart 后）。
+        if (p.inMagumTrials() && p.floor() <= 0) {
+            return new PlayerStage(null, false, k);
+        }
+
         String stageType = stageTypeFromKind(k);
+        // v8.1.0 · MT 命名空间隔离：stageType 加 mt_ 前缀，避免 MT 难度5·F8·boss=18（Magum 决战）
+        // 与大厅塔 T1F18·boss=18（同样是 Magum）合桶。
+        if (p.inMagumTrials()) {
+            stageType = "mt_" + stageType;
+        }
         String stageNumStr = Integer.toString(p.stageNum());
 
         if (isStageBlocked(stageType, stageNumStr)) {

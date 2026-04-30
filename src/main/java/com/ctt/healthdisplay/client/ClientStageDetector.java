@@ -118,7 +118,8 @@ public final class ClientStageDetector {
                 kind, tier, floor, stageNumInt,
                 0, 0,
                 StageLocation.GameOverPhase.NONE, false,
-                stageName
+                stageName,
+                false /* v8.1.0 · 客户端 detector 路径不识别 MT 上下文 */
         );
         commit(key, snap, "title:" + text + (subtitle.isEmpty() ? "" : " / " + subtitle));
     }
@@ -175,7 +176,8 @@ public final class ClientStageDetector {
                     breakRoomIdFromName(name),
                     0,
                     StageLocation.GameOverPhase.NONE, false,
-                    stageName
+                    stageName,
+                    false /* v8.1.0 · floor bar fallback 不识别 MT 上下文 */
             );
             commit(key, snap, "floorBar:" + s);
             return; // 一次扫描只 commit 一个 floor bar
@@ -193,7 +195,8 @@ public final class ClientStageDetector {
         StageLocation.Snapshot snap = new StageLocation.Snapshot(
                 StageLocation.Kind.UNKNOWN, 0, 0, 0, 0, 0,
                 StageLocation.GameOverPhase.NONE, false,
-                "\u672a\u77e5\u5173\u5361"
+                "\u672a\u77e5\u5173\u5361",
+                false /* v8.1.0 · UNKNOWN fallback 不识别 MT 上下文 */
         );
         commit(key, snap, "takenDamage");
     }

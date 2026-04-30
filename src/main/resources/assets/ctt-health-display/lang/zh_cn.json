@@ -59,6 +59,7 @@
   "ctt-health-display.config.option.client_kill_debug_chat": "聊天栏击杀报告: %s",
 
   "ctt-health-display.stage_report.header.stage": "\u2550\u2550\u2550\u2550\u2550\u2550 T%1$sF%2$s \u00b7 %3$s \u00b7 %4$s \u2550\u2550\u2550\u2550\u2550\u2550",
+  "ctt-health-display.stage_report.header.stage_mt": "\u2550\u2550\u2550\u2550\u2550\u2550 MT \u96be\u5ea6%1$s\u00b7F%2$s \u00b7 %3$s \u00b7 %4$s \u2550\u2550\u2550\u2550\u2550\u2550",
   "ctt-health-display.stage_report.header.session": "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 \u5168\u5c40 %s \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
   "ctt-health-display.stage_report.label.team_stage": "[\u5168\u961f\u00b7\u5173]",
   "ctt-health-display.stage_report.label.team_session": "[\u5168\u961f\u00b7\u5c40]",
@@ -96,6 +97,7 @@
   "ctt-health-display.config.server.option.filter_init_hp_jumps": "过滤初始血量跳变: %s",
   "ctt-health-display.config.server.option.filter_suspect_victims": "过滤可疑受害者大数: %s",
   "ctt-health-display.config.server.option.suspect_victim_threshold": "可疑受害者阈值: %s",
+  "ctt-health-display.config.server.option.collect_magum_trials": "Magum Trials \u5206\u5173\u91c7\u96c6: %s",
   "ctt-health-display.config.server.info.init_hp_values": "\u00a78初始血量列表: %s",
   "ctt-health-display.config.server.info.suspect_victims": "\u00a78可疑受害者: %s"
 }

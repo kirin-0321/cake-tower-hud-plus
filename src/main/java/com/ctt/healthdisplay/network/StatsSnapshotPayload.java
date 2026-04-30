@@ -212,10 +212,22 @@ public record StatsSnapshotPayload(
 
     private static StatsSnapshotPayload read(RegistryByteBuf buf) {
         byte ver = buf.readByte();
-        if (ver != CURRENT_VERSION) {
-            // 不抛异常，让 client 端 receiver 看到 version 不匹配后忽略；
-            // 留出未来 schema 演进通道。
-            // 为安全仍走完整解码（如果字段被改了这里会越界 → 上游 try-catch 兜住）。
+        // v8.1.1 · 旧客户端 ← 新服务端 (ver > CURRENT_VERSION) 防御：
+        // 未来若在 StageRow/PlayerEntry 等嵌套结构里追加字段，当前版本按 v2 schema
+        // 顺序读取会把"下一行的开头"读成"上一行的多余字节"，varInt 错位后大概率把
+        // nRows/nPlayers 读成天文数字，触发 NegativeArraySizeException / OOM 或 OOB，
+        // 再被 netty pipeline 抛成 DecoderException 直接踢线（注意：codec 抛异常
+        // ≠ 上游 try-catch 兜住，不存在那种兜底）。所以未知未来版本一律 drain 到底
+        // 返回空快照，让 client receiver 在本 tick 跳过；UI 沿用上一帧或显示空表。
+        if (Byte.toUnsignedInt(ver) > Byte.toUnsignedInt(CURRENT_VERSION)) {
+            buf.skipBytes(buf.readableBytes());
+            return new StatsSnapshotPayload(
+                    ver, 0L, 0L, 0L,
+                    false, false,
+                    0, -1,
+                    Collections.emptyList(),
+                    Collections.emptyList()
+            );
         }
         long startMs           = buf.readLong();
         long activeDurationMs  = buf.readLong();
@@ -283,6 +295,13 @@ public record StatsSnapshotPayload(
                     recent5sSum));
         }
 
+        // v8.1.1 · 末尾保险阀：如果未来版本忘了 bump version 但只在 payload 末尾追加了
+        // 与嵌套结构无关的标量字段，slice 仍会有残字节。按规范应 bump version，但万一
+        // 忘了，class_9136 的"buffer not fully consumed"校验会直接踢人；这里 drain 一下
+        // 让 codec 至少不会因此而断线。代价是这些新字段被丢弃，等于"看不到但不崩"。
+        if (buf.isReadable()) {
+            buf.skipBytes(buf.readableBytes());
+        }
         return new StatsSnapshotPayload(
                 ver, startMs, activeDurationMs, startTick,
                 live, frozen,
