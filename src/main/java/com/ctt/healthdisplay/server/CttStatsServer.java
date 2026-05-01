@@ -1,5 +1,6 @@
 package com.ctt.healthdisplay.server;
 
+import com.ctt.healthdisplay.network.MobHealthPayload;
 import com.ctt.healthdisplay.network.StagePayload;
 import com.ctt.healthdisplay.network.StatsSnapshotPayload;
 import net.fabricmc.api.ModInitializer;
@@ -82,6 +83,12 @@ public class CttStatsServer implements ModInitializer {
         // —— 让 host 端的客户端代码与远程客户端走同一条数据通路，便于回归测试。
         PayloadTypeRegistry.playS2C().register(StatsSnapshotPayload.ID, StatsSnapshotPayload.CODEC);
 
+        // v8.3.0 · M7 · 注册 mob 血量 S2C payload。服务端每 5 tick per-player 推 32 条视野
+        // 内活 mob 的 (hp / maxHp / targetted)，客户端 ClientMobHealthCache 维护 5 s fresh
+        // 窗口；纯 vanilla 服务端 / 别的地图世界完全不发包，客户端 isFresh=false 自动回落
+        // 老 bossbar 解析路径。详见 MobHealthBroadcaster。
+        PayloadTypeRegistry.playS2C().register(MobHealthPayload.ID, MobHealthPayload.CODEC);
+
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             currentServer = server;
             LOGGER.info("[CTT Stats] server reference cached.");
@@ -120,6 +127,9 @@ public class CttStatsServer implements ModInitializer {
             StageProbeServer.onDisconnect(uuid);
             // v8.x · 玩家断线时清理 per-player 广播订阅，避免泄漏到下次同 UUID 重连后还残留旧订阅
             com.ctt.healthdisplay.server.command.BroadcastSubscribers.onPlayerDisconnect(uuid);
+            // v8.3.0 · M7 · 清 MobHealthBroadcaster 的 LAST_SENT，避免下次同 UUID 重连
+            // 后被差量逻辑误判成"和上次一样"而首帧不推送。
+            MobHealthBroadcaster.onPlayerDisconnect(uuid);
         });
 
         ServerTickEvents.END_SERVER_TICK.register(DamageProbe::flushTick);
@@ -139,6 +149,10 @@ public class CttStatsServer implements ModInitializer {
         // 触发一次广播。集成服务器和专用服务器都注册（集成场景下 client 端的 mirror 走
         // 直读路径会忽略收到的 payload，不影响）。
         ServerTickEvents.END_SERVER_TICK.register(StatsSnapshotBroadcaster::tickPushIfDue);
+
+        // v8.3.0 · M7 · 4 Hz 推送 per-player 怪物血量表。地图无 CTT scoreboard 时内部
+        // 直接 early return，非 CTT 环境零开销。详见 MobHealthBroadcaster。
+        ServerTickEvents.END_SERVER_TICK.register(MobHealthBroadcaster::tickPushIfDue);
 
         // v6.6.1 · M2 · NBT 持久化节流写：每 60s 检查一次是否到点。
         ServerTickEvents.END_SERVER_TICK.register(StatsPersistenceManager::onTickEnd);

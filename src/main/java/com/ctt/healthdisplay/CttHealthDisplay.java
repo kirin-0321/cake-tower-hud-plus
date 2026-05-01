@@ -2,8 +2,10 @@ package com.ctt.healthdisplay;
 
 import com.ctt.healthdisplay.client.CdpPersistence;
 import com.ctt.healthdisplay.client.ClientDamageProbe;
+import com.ctt.healthdisplay.client.ClientMobHealthCache;
 import com.ctt.healthdisplay.client.ClientStageProbe;
 import com.ctt.healthdisplay.client.ClientStatsCache;
+import com.ctt.healthdisplay.client.TriggerEchoFilter;
 import com.ctt.healthdisplay.config.ModConfig;
 import com.ctt.healthdisplay.health.HealthData;
 import com.ctt.healthdisplay.health.MobHealthData;
@@ -15,6 +17,7 @@ import com.ctt.healthdisplay.hud.HealthBarRenderer;
 import com.ctt.healthdisplay.hud.StageNameRegistry;
 import com.ctt.healthdisplay.hud.StatsRenderer;
 import com.ctt.healthdisplay.hud.StatsTableScreen;
+import com.ctt.healthdisplay.network.MobHealthPayload;
 import com.ctt.healthdisplay.network.StagePayload;
 import com.ctt.healthdisplay.network.StatsSnapshotPayload;
 import com.ctt.healthdisplay.server.DamageProbe;
@@ -116,6 +119,23 @@ public class CttHealthDisplay implements ClientModInitializer {
             ClientStatsCache.update(payload);
         });
 
+        // v8.3.0 · M7 · 注册 mob 血量 S2C payload + receiver。集成服务器场景下 server
+        // entrypoint 已经注册过 payload type（同 JVM 单例），重复注册会抛 IAE，try-catch 吞掉。
+        // 纯 dedicated client / LAN 远端客户端独立 JVM 必须在这里注册才能完成握手。
+        try {
+            PayloadTypeRegistry.playS2C().register(MobHealthPayload.ID, MobHealthPayload.CODEC);
+        } catch (IllegalArgumentException dup) {
+            // 集成服务器：CttStatsServer.onInitialize 已注册，忽略
+        }
+        ClientPlayNetworking.registerGlobalReceiver(MobHealthPayload.ID, (payload, ctx) -> {
+            // 未来版本防御：codec 已把 ver > CURRENT_VERSION 的包降级成空 entries，
+            // 这里识别后丢弃不刷 lastPushMs，让 isFresh 顺其自然过期回落本地路径。
+            if (Byte.toUnsignedInt(payload.version()) > Byte.toUnsignedInt(MobHealthPayload.CURRENT_VERSION)) {
+                return;
+            }
+            ClientMobHealthCache.onPayload(payload);
+        });
+
         // 切服 / 断线时清缓存，避免悬挂上一局数据。
         // v8.1.0 起 ClientDamageProbe.resetForDisconnect 内部会先 freezeCurrentStage +
         // CdpPersistence.save，再清内存——这里调用方不需要额外操作。
@@ -124,6 +144,8 @@ public class CttHealthDisplay implements ClientModInitializer {
             ClientStatsCache.reset();
             ClientDamageProbe.INSTANCE.resetForDisconnect();
             com.ctt.healthdisplay.client.ClientStageDetector.onDisconnect();
+            // v8.3.0 · M7 · 清 mob 血量缓存，切服后下一局起 isFresh=false 从头累积
+            ClientMobHealthCache.reset();
         });
 
         // v8.1.0 · CDP 持久化生命周期钩子：
@@ -176,6 +198,9 @@ public class CttHealthDisplay implements ClientModInitializer {
         ));
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
+            // v8.1.7 · 优先吞掉本模组自发 /trigger 命令的回显（自己/队友/OP admin 广播都覆盖），
+            // 避免 ViewStats / TogglePartyBossbar 每几秒刷一条淹没聊天（反馈 2026-05-01）。
+            if (TriggerEchoFilter.shouldHide(message, overlay)) return false;
             boolean wasReady = statsData.hasData();
             boolean hide = statsData.processMessage(message, overlay);
             return !hide;
@@ -391,6 +416,12 @@ public class CttHealthDisplay implements ClientModInitializer {
     }
 
     private static void updateMobTracking(net.minecraft.client.MinecraftClient client) {
+        // v8.3.0 · M7 · 服务端权威 mob 血量 cache 命中时整段客户端 bossbar → entity 近似
+        // 搜索 + 本地 map 维护全部短路。反馈 2026-05-01 的 "Boss champion 场景头顶条闪烁"
+        // 根因就是 vanilla bossbar 同一时刻只能锁一只（Boss 出现后永远锁 Boss），
+        // 客户端拿不到其它同名 mob 的独立 HP；现在直接读服务端按距离排序的 32 条。
+        if (ClientMobHealthCache.isFresh()) return;
+
         List<HealthData.MobBossBarEntry> bars = HealthData.getActiveMobBars();
         Map<UUID, MobHealthData> map = HealthData.getMobHealthMap();
         net.minecraft.util.math.Vec3d playerPos = client.player.getPos();

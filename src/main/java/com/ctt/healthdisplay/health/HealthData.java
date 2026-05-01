@@ -78,6 +78,14 @@ public class HealthData {
     }
 
     public static Map<java.util.UUID, MobHealthData> getMobHealthMap() {
+        // v8.3.0 · M7 · 服务端权威 cache 命中时返回只读 snapshot；客户端渲染端 (TeammateWorldRenderer
+        // 等) 得到的 map 与本地 mobHealthMap 结构完全一致 —— 字段 (name/suffixText/hp/maxHP/
+        // targetted/nameColor) 在 ClientMobHealthCache.onPayload 里已按 MobHealthData 构造完成。
+        // 未命中 (服务端没装 mod / 失鲜超过 5 s) 自动回落本地 mobHealthMap，由 CttHealthDisplay.
+        // updateMobTracking 负责填充，行为与 v8.2 一致。
+        if (com.ctt.healthdisplay.client.ClientMobHealthCache.isFresh()) {
+            return com.ctt.healthdisplay.client.ClientMobHealthCache.viewSnapshot();
+        }
         return mobHealthMap;
     }
 

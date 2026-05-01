@@ -330,12 +330,14 @@ public final class StatsTableData {
     /**
      * 关卡名本地化。
      * <ol>
-     *   <li><b>优先</b> {@link StageNameRegistry#localizedName(StageLocation.Kind, int)} ——
-     *       按客户端语言从内置 map 取 en/zh（例如英文客户端显示 "Garden of Hope"）。</li>
-     *   <li>detector 路径 {@code STAGE_DUNGEON@副标题} / 服务端 {@code dungeon} 均需能解析出
-     *       {@link StageLocation.Kind} + {@code stageNum}（见 {@link #resolveKindFromStageType}）。</li>
-     *   <li>注册表未命中 → 再取 {@code @} 后字符串（vanilla 副标题原文，语种随地图包）。</li>
-     *   <li>仍不行 → {@code stageType + stageNum} 兜底。</li>
+     *   <li><b>detector 路径</b>（{@code stageType} 含 {@code @}，如 {@code STAGE_DUNGEON@骷髅地牢 [基础]}）：
+     *       直接用 {@code @} 后的 subtitle 字符串。纯客户端从 vanilla title {@code "1-6"} 拿到的
+     *       第二段是 {@code #Floor} 而非 {@code #Dungeon} 子关 ID（datapack {@code _floor_universal.mcfunction:255}），
+     *       根本没法可靠查表；subtitle 已经被客户端语言包翻译，是最可信的关卡名来源。</li>
+     *   <li><b>服务端 payload 路径</b>（{@code stageType="dungeon"} 等无 {@code @}）：用
+     *       {@link StageNameRegistry#localizedName(StageLocation.Kind, int)} 查表 ——
+     *       服务端读 {@code #Dungeon} 等 holder，{@code stageNum} 是真实子关 ID。</li>
+     *   <li>都没命中 → {@code stageType + stageNum} 兜底。</li>
      * </ol>
      */
     private static String localizeStageName(StageKey key) {
@@ -343,17 +345,21 @@ public final class StatsTableData {
         String type = key.stageType();
         int num = parseIntOrZero(key.stageNum());
 
-        StageLocation.Kind kind = resolveKindFromStageType(type);
-        if (kind != null && num > 0) {
-            String name = StageNameRegistry.localizedName(kind, num);
-            if (name != null && !name.isEmpty()) return name;
-        }
-
+        // detector 路径优先：subtitle 已经 client-lang 本地化，比注册表准。
+        // 同时这里隔绝旧版 CDP 持久化里残留的 stageNum=floor 错误数据
+        // （旧 ClientStageDetector 把 title "1-6" 的 6 当 stageNum 写盘，
+        //  会让注册表查到错误的 dungeon 子关名）。
         if (type != null) {
             int at = type.indexOf('@');
             if (at >= 0 && at < type.length() - 1) {
                 return type.substring(at + 1);
             }
+        }
+
+        StageLocation.Kind kind = resolveKindFromStageType(type);
+        if (kind != null && num > 0) {
+            String name = StageNameRegistry.localizedName(kind, num);
+            if (name != null && !name.isEmpty()) return name;
         }
 
         // Fallback：类型名 + 编号（纯服务端 stageType，无 @）

@@ -25,6 +25,17 @@
 
 > 左侧队友栏：头像 / 名字 / HP 条 / 命数，按命数排序，自己永远在顶部（金色名字）；可拖拽、横竖排切换。3D 头顶血量队友穿墙可见，怪物头顶 HP 显示，最近目标自动标 ▶；狂暴 / 精英后缀和颜色与地图一致。
 
+### Mob HP source · 怪物血量获取 (v8.3+)
+
+The 3D overhead HP for hostiles is fed by **two complementary paths**, picked automatically per-frame depending on what's installed.
+
+- **Server-authoritative pipeline (preferred, v8.3+)** — when this mod is also installed on the server, `MobHealthBroadcaster` runs on `END_SERVER_TICK` at **4 Hz (every 5 ticks)**. For each online player it scans a **48-block** radius for live `LivingEntity` (players / armor stands excluded), reads `RedHearts` / `MaxHP` directly off the scoreboard via `ScoreboardReader`, sorts by squared distance, and pushes the closest **32** as a `MobHealthPayload` (UUID / name / hp / maxHp / nameColor / `targetted`). The nearest entry is flagged `targetted=true`, which is what drives the yellow **▶** marker. Snapshots are diffed against the previous send so steady-state traffic is ~0; on the client `ClientMobHealthCache.isFresh()` trusts the snapshot for **5 s**. This path **does not depend on vanilla boss bars**, so it fixes the long-standing "Boss champion present → other mobs' HP glitches" bug end-to-end.
+- **Client-side bossbar approximation (fallback, legacy)** — when the server doesn't have this mod (vanilla / datapack-only / older versions), `isFresh()` stays `false` and the client falls back to its original `updateMobTracking` path: parse vanilla boss bar lines, then for each visible same-name mob copy the bar's HP / maxHp over and pick the closest as the ▶ target. Limited by the vanilla rule that only one boss bar can show at a time, so when a Boss champion takes the bar slot, normal mobs lose their HP source until it releases. Behaviorally identical to v8.2 — install on server side to opt into the authoritative path.
+
+> v8.3+ 起，敌人 3D 头顶血条由**两条互补管道**供数据，每帧根据"服务端是否也装了本 mod"自动选择。
+> - **服务端权威推送（首选 · v8.3+）**：服务端 `MobHealthBroadcaster` 挂在 `END_SERVER_TICK` 上 **4 Hz（每 5 tick）** 触发；以每个在线玩家为中心 **48 格半径**扫活 `LivingEntity`（排除玩家和盔甲架），通过 `ScoreboardReader` 直接读 `RedHearts` / `MaxHP` scoreboard，按距离平方排序取最近 **32** 条打成 `MobHealthPayload`（UUID / 名字 / 当前血 / 最大血 / 名字颜色 / `targetted`）下发；最近那一只标 `targetted=true`，就是头顶 ▶ 黄色箭头的来源。差量发送，稳态网络流量约 0；客户端 `ClientMobHealthCache.isFresh()` 在 **5 秒**内信任该快照。**完全绕开 vanilla bossbar**，从根上修掉 "Boss 冠军存在时其他怪头顶血条错位"的老问题。
+> - **客户端 bossbar 近似（兜底 · 旧路径）**：服务端没装本 mod（纯 vanilla / 纯数据包 / 老版本）时 `isFresh()` 持续为 false，客户端自动回落到老的 `updateMobTracking` —— 解析 vanilla bossbar 行，把里面的 HP / maxHp 抄给场景里同名最近的怪，并选最近一只作为 ▶ 目标。受 vanilla "同一时刻最多一条 boss bar" 限制，Boss 冠军占用 bar 时普通怪会暂时失去血量来源；行为与 v8.2 完全一致 —— 装在服务端即可升级到权威路径。
+
 ### Stats & boss bars · 属性与 Boss 栏
 
 - Long **ViewStats** output becomes a **two-column panel** with tooltips preserved. Modes: always on / only when inventory open / hidden.

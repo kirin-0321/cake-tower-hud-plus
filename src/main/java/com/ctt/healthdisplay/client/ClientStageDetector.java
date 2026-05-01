@@ -52,6 +52,12 @@ public final class ClientStageDetector {
     private static final int FLOOR_NUM_MAX = 999;
     private static final int FLOOR_TOTAL_MAX = 200;
     private static final int TOWER_NAME_MAX_LEN = 30;
+    /**
+     * floor bar 总层数下限（含）。CTT 所有真实塔（高塔=30 / Magum Trials≈30 等）
+     * 都远大于 10；关卡内任务进度条（如"给花施肥! (1/5)"）总数通常 ≤ 9，加这个阈值
+     * 能阻止任务进度条被误识别成休息室信号、把关卡数据切到"BREAK_ROOM"桶里去。
+     */
+    private static final int FLOOR_TOTAL_MIN = 11;
 
     // ---- 当前状态 ----
     private static volatile StageKey currentKey = null;
@@ -82,14 +88,20 @@ public final class ClientStageDetector {
         String suffix = m.group(2);
 
         StageLocation.Kind kind;
-        int stageNumInt = 0;
+        // dungeon title 形如 "1-6"，第二段是 #Floor 不是 #Dungeon 子关 ID
+        // （datapack `_floor_universal.mcfunction:255` 用的是 #Floor objective）。
+        // 旧实现把 6 当成 dungeon 子关 ID 喂进 StageNameRegistry → 显示成"熔岩湖"
+        // 而真实子关是"骷髅地牢"。纯客户端无法从 vanilla title 推断子关 ID，
+        // 这里只把它当 floor 用；StageKey/Snapshot 的 stageNum 一律为 0，让下游
+        // localizeStageName 走 subtitle 兜底（subtitle 已被 client lang 本地化）。
+        int titleFloor = 0;
         switch (suffix) {
             case "$":              kind = StageLocation.Kind.STAGE_SHOP;  break;
             case "\u2620":         kind = StageLocation.Kind.STAGE_MBOSS; break; // ☠ 大小 boss 暂统一
             case "\u2764":         kind = StageLocation.Kind.STAGE_ALLY;  break; // ❤
             default:
                 kind = StageLocation.Kind.STAGE_DUNGEON;
-                try { stageNumInt = Integer.parseInt(suffix); }
+                try { titleFloor = Integer.parseInt(suffix); }
                 catch (NumberFormatException e) { return; }
         }
 
@@ -103,19 +115,21 @@ public final class ClientStageDetector {
 
         // 关卡名优先用 subtitle；无 subtitle 时用 "Tier-Suffix" 原始文本兜底，避免空名
         String stageName = subtitle.isEmpty() ? text : subtitle;
-        int floor = stageNumInt > 0 ? stageNumInt : Math.max(0, lastFloorNum);
+        int floor = titleFloor > 0 ? titleFloor : Math.max(0, lastFloorNum);
 
         // StageKey.stageType 编码为 "<KIND>@<stageName>" —— 让 buildStage / 比较仍用稳定 key，
         // 同时把"同名同 kind 视作同一桶"的语义直接落到 hashCode/equals 上。
+        // stageNum 始终为 "0"：detector 路径无法从 title 推断真实子关 ID，
+        // 留 0 让 StatsTableData 跳过 StageNameRegistry 查询，直接用 stageType 里的 subtitle。
         StageKey key = new StageKey(
                 "client",
                 String.valueOf(tier),
                 String.valueOf(floor),
                 kind.name() + "@" + stageName,
-                String.valueOf(stageNumInt)
+                "0"
         );
         StageLocation.Snapshot snap = new StageLocation.Snapshot(
-                kind, tier, floor, stageNumInt,
+                kind, tier, floor, 0,
                 0, 0,
                 StageLocation.GameOverPhase.NONE, false,
                 stageName,
@@ -153,7 +167,7 @@ public final class ClientStageDetector {
             } catch (NumberFormatException e) { continue; }
             if (name.isEmpty() || name.length() > TOWER_NAME_MAX_LEN) continue;
             if (floor < 0 || floor > FLOOR_NUM_MAX) continue;
-            if (total < 1 || total > FLOOR_TOTAL_MAX) continue;
+            if (total < FLOOR_TOTAL_MIN || total > FLOOR_TOTAL_MAX) continue;
             // 排除"X/X 全血"型玩家/怪物血条（floor==total 且 total 较大）
             if (total > 50 && floor == total) continue;
 
