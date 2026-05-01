@@ -4,6 +4,9 @@ import com.ctt.healthdisplay.config.ServerConfig;
 import com.ctt.healthdisplay.server.filter.DamageFilterPipeline;
 import com.ctt.healthdisplay.server.filter.FilterDecision;
 import com.ctt.healthdisplay.server.filter.FilterReason;
+import com.ctt.healthdisplay.server.filter.PendingDamageBuffer;
+import com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry;
+import com.ctt.healthdisplay.server.filter.WeaponIdResolver;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.registry.Registries;
@@ -292,9 +295,39 @@ public final class DamageProbe {
         }
 
         if (victim.getCommandTags().contains("E")) {
-            String reasonTag = filtered ? decision.reason().shortTag() : null;
-            AttackerProbe.recordFromDamageShower(server, victim, foundWorld, damage, tick,
-                    forceLayer, reasonTag);
+            if (filtered) {
+                // 同步规则栈命中：保留 v6.7.x 直接路径——记诊断 + 路由 L9_FILTER + reason tag
+                FilterReason reason = decision.reason();
+                String reasonTag = reason.shortTag();
+                AttackerProbe.recordFromDamageShower(server, victim, foundWorld, damage, tick,
+                        forceLayer, reasonTag);
+                // v8.x · G7a 致死机制刀 capped 补偿：玩家用秒杀技 / 超额武器击杀小怪，原 damage 被
+                //   过滤掉但实际造成的伤害（≤ MaxHP）应计入玩家账户，避免击杀维度归属对了
+                //   而伤害维度归零的体验割裂。仅 LETHAL_MECHANISM 触发；OVERSIZE / 其它 reason 不触发。
+                if (reason == FilterReason.LETHAL_MECHANISM) {
+                    AttackerProbe.Attribution atk =
+                            AttackerProbe.tryAttribute(server, victim, foundWorld, tick);
+                    recordLethalCappedDamage(victim, atk.attackerUuid(),
+                            atk.attackerLabel(), damage, atk.layer());
+                }
+            } else if (ServerConfig.INSTANCE.useDamageBuffer) {
+                // v8.x · G7b 三指标 AND 通道：放行事件先入 PendingDamageBuffer，
+                //         buffer 在 flushTick 末尾批量出队跑 G7b 判定 + 归属。
+                AttackerProbe.Attribution atk =
+                        AttackerProbe.tryAttribute(server, victim, foundWorld, tick);
+                String weaponId = atk.attackerUuid() != null
+                        ? WeaponIdResolver.resolveCurrent(atk.attackerUuid())
+                        : WeaponIdResolver.EMPTY;
+                boolean wasLethal = victim.isRemoved()
+                        || DamageFilterPipeline.readVictimRedHearts(victim) <= 0;
+                PendingDamageBuffer.enqueue(victim, foundWorld, damage, tick,
+                        atk.attackerUuid(), atk.attackerLabel(), atk.layer(),
+                        weaponId, wasLethal);
+            } else {
+                // 总闸关闭：退化 v6.7.x 直接归属
+                AttackerProbe.recordFromDamageShower(server, victim, foundWorld, damage, tick,
+                        null, null);
+            }
         }
     }
 
@@ -320,6 +353,15 @@ public final class DamageProbe {
     /** 每 tick 末调用，批量消费队列，找受害者并打日志。 */
     public static void flushTick(MinecraftServer server) {
         tickCounter++;
+
+        // v8.x · G7b 三指标 AND outlier 判定：每 tick 末把 buffer 内
+        //         enqueueTick + delay ≤ currentTick 的事件 drain 出来跑判定。
+        if (server != null && ServerConfig.INSTANCE.useDamageBuffer) {
+            long currentTick = currentServerTick(server);
+            PendingDamageBuffer.flush(currentTick,
+                    (entry, ct) -> handleBufferedEntry(server, entry, ct));
+        }
+
         if (pending.isEmpty()) return;
 
         List<RawEvent> batch = new ArrayList<>();
@@ -329,6 +371,133 @@ public final class DamageProbe {
         for (RawEvent ev : batch) {
             resolveAndLog(server, ev);
         }
+    }
+
+    /**
+     * v8.x · {@link PendingDamageBuffer.FlushHandler} 实现。
+     *
+     * <p>处理流程：
+     * <ol>
+     *   <li>跑 {@link DamageFilterPipeline#evaluateOutlierG7b} 三指标 AND 判定</li>
+     *   <li><b>放行</b>（任一门未过）→ 调老 {@link AttackerProbe#recordFromDamageShower}
+     *       走完整归属链路（feedStats / contributors / lethal candidate / chat broadcast）；
+     *       通过 {@link DamageFilterPipeline#shouldObserveSample 入样规则}时
+     *       同时调 {@link PerPlayerWeaponP95Registry#observe} +
+     *       {@link com.ctt.healthdisplay.server.PlayerDpsTracker#onDealtByWeapon} 喂数据</li>
+     *   <li><b>命中 lethal-mechanism</b>（致死单击）→ 调 {@code recordFromDamageShower(... L9_FILTER, "lethal-mechanism")}；
+     *       <b>额外</b>手动调 {@link VictimDamageContributors#addContribution} 让击杀仍归属
+     *       （AttackerProbe 在 L9_FILTER 路径下不会写 contributors）；不入 P95 / DPS 样本</li>
+     *   <li><b>命中 outlier</b>（非致死）→ 调 {@code recordFromDamageShower(... L9_FILTER, "outlier")}；
+     *       不写 contributors；不入 P95 / DPS 样本</li>
+     * </ol>
+     *
+     * <p>入样规则保证：被任何过滤路径处理的事件都不会写入 P95 / DPS 训练样本——
+     * 防"被过滤的大数把自身阈值拉高"自污染（详见 {@code 大额伤害过滤器.md} 规则 1）。
+     */
+    private static void handleBufferedEntry(MinecraftServer server,
+                                            PendingDamageBuffer.Entry entry, long currentTick) {
+        if (entry == null || server == null) return;
+        Entity victim = entry.victim();
+        ServerWorld world = entry.victimWorld();
+        if (victim == null || world == null) return;
+
+        FilterDecision decision = DamageFilterPipeline.evaluateOutlierG7b(entry);
+        boolean filtered = decision.filtered();
+
+        if (!filtered) {
+            // 放行：走 AttackerProbe 完整归属链路
+            AttackerProbe.recordFromDamageShower(server, victim, world,
+                    entry.damage(), entry.enqueueTick(), null, null);
+            // 入样（仅放行 + 满足规则的事件入 P95 / per-weapon DPS 样本）
+            if (DamageFilterPipeline.shouldObserveSample(entry)) {
+                PerPlayerWeaponP95Registry.observe(
+                        entry.attackerUuid(), entry.weaponId(), entry.damage());
+                PlayerDpsTracker.onDealtByWeapon(
+                        entry.attackerUuid(), entry.weaponId(), entry.damage());
+            }
+            return;
+        }
+
+        // 三指标 AND 命中
+        FilterReason reason = decision.reason();
+        AttackerProbe.recordFromDamageShower(server, victim, world,
+                entry.damage(), entry.enqueueTick(),
+                AttackerProbe.Layer.L9_FILTER, reason.shortTag());
+
+        // lethal-mechanism · 击杀维度仍归属：手动写 contributors（attribute 已在入队时解析好）
+        if (reason.writesContributors() && entry.attackerUuid() != null) {
+            VictimDamageContributors.addContribution(
+                    victim.getUuid(), entry.attackerUuid(),
+                    trimAttackerLabel(entry.attackerLabel()),
+                    entry.damage(), currentTick, true);
+        }
+
+        // v8.x · 致死机制刀 capped 补偿：玩家秒杀小怪时把 min(damage, MaxHP) 加入玩家伤害账户。
+        //   仅 LETHAL_MECHANISM 触发；OUTLIER（非致死）不触发——超出部分本就是地图脚本假伤害。
+        if (reason == FilterReason.LETHAL_MECHANISM) {
+            recordLethalCappedDamage(victim, entry.attackerUuid(),
+                    entry.attackerLabel(), entry.damage(), entry.attackerLayer());
+        }
+        // outlier / lethal-mechanism 都不入 P95 / DPS 样本——防自污染
+    }
+
+    private static String trimAttackerLabel(String label) {
+        if (label == null) return "?";
+        if (label.startsWith("Player(") && label.endsWith(")")) {
+            return label.substring(7, label.length() - 1);
+        }
+        return label;
+    }
+
+    /**
+     * v8.x · "lethal-mechanism" 致死机制刀 capped 补偿。
+     *
+     * <p><b>问题场景</b>：玩家用秒杀技 / 超额武器（damage = 9999）击杀小怪（MaxHP = 200）。
+     * G7a 物理地板（{@code damage > MaxHP × 3}）把这次记为 {@link FilterReason#LETHAL_MECHANISM}
+     * → 击杀维度通过 {@link VictimDamageContributors} 归属正确，但伤害维度因 forceLayer = L9_FILTER
+     * 走了 {@link com.ctt.healthdisplay.server.PlayerDamageStats#addUnclassified}——玩家伤害榜上
+     * 这次秒杀**记 0 伤害**，看起来像"白送了一刀"。
+     *
+     * <p><b>修复</b>：把 {@code min(damage, MaxHP)} 作为"实际造成的有效伤害"补到玩家账户，
+     * 用 entry / tryAttribute 已解析出的 attacker UUID + layer 直接调
+     * {@link com.ctt.healthdisplay.server.PlayerDamageStats#add}（绕过 attribute 重做）。
+     *
+     * <h3>补偿规则</h3>
+     * <ul>
+     *   <li>仅 {@link FilterReason#LETHAL_MECHANISM} 调（OVERSIZE / OUTLIER 非致死场景下"超出部分"
+     *       本就是地图脚本伪伤害，capped=MaxHP 也是假的，不补）</li>
+     *   <li>{@code attackerUuid == null} 时跳过——攻击者归属失败的 lethal-mechanism 通常是地图机制
+     *       自己致死小怪（如 BOSS 大招），不属于任何玩家</li>
+     *   <li>{@code attackerLayer.isUnclassified()} 时跳过——
+     *       {@link com.ctt.healthdisplay.server.PlayerDamageStats#add} 不接受 L9 层级</li>
+     *   <li>{@code MaxHP &le; 0} 时（地图无 MaxHP scoreboard）退化为按原 damage 加——这种情况
+     *       下原 damage 其实从未触发 G7a（{@code maxHp > 0} 才进 G7a 判定），不会走到本分支</li>
+     * </ul>
+     *
+     * <p>注意：本方法**不调** {@link com.ctt.healthdisplay.server.PlayerDpsTracker#onDealtByWeapon}
+     * 也**不入 P95 样本**——capped 是合成数字、不代表真实武器输出节奏，混入 DPS / P95 会失真。
+     */
+    private static void recordLethalCappedDamage(Entity victim, UUID attackerUuid,
+                                                  String attackerLabel, int rawDamage,
+                                                  AttackerProbe.Layer attackerLayer) {
+        if (victim == null || attackerUuid == null || rawDamage <= 0) return;
+        if (attackerLayer == null || attackerLayer.isUnclassified()) return;
+        int maxHp = DamageFilterPipeline.readVictimMaxHp(victim);
+        int capped = (maxHp > 0) ? Math.min(rawDamage, maxHp) : rawDamage;
+        if (capped <= 0) return;
+        String name = trimAttackerLabel(attackerLabel);
+        PlayerDamageStats.add(attackerUuid, name, null, capped, attackerLayer);
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("[CTT lethal-cap] attacker={} layer={} raw={} maxHp={} capped={} victim={}",
+                    name, attackerLayer.shortTag(), rawDamage, maxHp, capped,
+                    victim.getName().getString());
+        }
+    }
+
+    /** server 当前 tick 的统一获取（{@link MinecraftServer#getOverworld} 几乎永远存在）。 */
+    private static long currentServerTick(MinecraftServer server) {
+        ServerWorld ow = server.getOverworld();
+        return ow != null ? ow.getTime() : 0L;
     }
 
     private static void resolveAndLog(MinecraftServer server, RawEvent ev) {

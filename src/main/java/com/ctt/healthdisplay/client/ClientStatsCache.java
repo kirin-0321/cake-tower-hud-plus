@@ -230,6 +230,61 @@ public final class ClientStatsCache {
         return Math.round(recent5sSum(uuid) / (float) PlayerDpsTracker.WINDOW_SECONDS);
     }
 
+    /**
+     * v8.x · 当前主手武器 ID（"empty" 表空手 / 解析失败）。L 面板顶部摘要数据源。
+     */
+    public static String currentWeaponId(UUID uuid) {
+        if (isIntegrated()) {
+            return com.ctt.healthdisplay.server.filter.WeaponIdResolver.resolveCurrent(uuid);
+        }
+        StatsSnapshotPayload p = latest;
+        if (p == null || uuid == null) return "";
+        var e = findPlayer(p, uuid);
+        return e == null ? "" : (e.currentWeaponId() == null ? "" : e.currentWeaponId());
+    }
+
+    /**
+     * v8.x · 当前主手武器 DPS_active（per-(player, weapon) 桶）。
+     * 停打 ≥ 5 秒返回 0。
+     */
+    public static long currentWeaponDpsActive(UUID uuid) {
+        if (isIntegrated()) {
+            String w = com.ctt.healthdisplay.server.filter.WeaponIdResolver.resolveCurrent(uuid);
+            return PlayerDpsTracker.dpsActiveByWeapon(uuid, w);
+        }
+        StatsSnapshotPayload p = latest;
+        if (p == null || uuid == null) return 0L;
+        var e = findPlayer(p, uuid);
+        return e == null ? 0L : e.weaponDpsActive();
+    }
+
+    /**
+     * v8.x · 当前主手武器 P95 值（-1 = 样本不足，AND 关系下 P95 维度跳过判定）。
+     */
+    public static int currentWeaponP95(UUID uuid) {
+        if (isIntegrated()) {
+            String w = com.ctt.healthdisplay.server.filter.WeaponIdResolver.resolveCurrent(uuid);
+            return com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry.p95(uuid, w);
+        }
+        StatsSnapshotPayload p = latest;
+        if (p == null || uuid == null) return -1;
+        var e = findPlayer(p, uuid);
+        return e == null ? -1 : e.weaponP95();
+    }
+
+    /** v8.x · 当前主手武器 P95 窗口当前样本数（用于 L 面板显示 {@code (87/100)} 进度）。 */
+    public static int currentWeaponP95Samples(UUID uuid) {
+        if (isIntegrated()) {
+            String w = com.ctt.healthdisplay.server.filter.WeaponIdResolver.resolveCurrent(uuid);
+            return com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry
+                    .sampleCount(uuid, w);
+        }
+        StatsSnapshotPayload p = latest;
+        if (p == null || uuid == null) return 0;
+        var e = findPlayer(p, uuid);
+        return e == null ? 0 : e.weaponP95Samples();
+    }
+
     public static PlayerDamageStats.Snapshot damageSnapshot() {
         if (isIntegrated()) return PlayerDamageStats.snapshot();
         return buildDamageSnapshot(latest, /*scope*/ null);

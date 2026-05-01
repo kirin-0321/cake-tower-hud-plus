@@ -44,7 +44,7 @@ public class ServerConfig {
      * （疑似 Prop / NPC 标签命中），v6.7.4 改默认 false——但已经持久化 JSON 的 true 值
      * 不会因仅改字段默认而被覆盖，必须靠版本号迁移强制覆写。
      */
-    public static final int CURRENT_CONFIG_VERSION = 4;
+    public static final int CURRENT_CONFIG_VERSION = 5;
 
     public static ServerConfig INSTANCE = new ServerConfig();
 
@@ -314,6 +314,94 @@ public class ServerConfig {
     /** 仅当本次记录的伤害 &ge; 此阈值时才触发"可疑 victim"过滤。默认 800。 */
     public int suspectVictimDamageThreshold = 800;
 
+    // ===== v8.x · G7b 三指标 AND 异常过滤 + PendingDamageBuffer =====
+
+    /**
+     * G7b 总闸（含 PendingDamageBuffer + per-(player, weapon) P95 + DPS_active 双桶）。
+     *
+     * <p>关闭后 {@link com.ctt.healthdisplay.server.filter.DamageFilterPipeline#applyFilters}
+     * 跑完同步规则栈直接 {@code pass()}，不入 buffer、不查 P95 / DPS、不触发 outlier / lethal-mechanism。
+     * 退化到 v6.7.x 现状（仅 G_low / G2 / G3 / G4 / G7a / G6）。
+     *
+     * <p>设计依据：{@code 大额伤害过滤器.md} §三道门 + V2.1 文档 §0.3 / §7.5。
+     */
+    public boolean useDamageBuffer = true;
+
+    /**
+     * G7b · PendingDamageBuffer 出队延迟（tick 数）。事件入队后等待 N tick 再 flush，
+     * 让"几乎同时到达的 RedHearts 致死信号"能在 flush 前被 {@code wasLethalAtBuffer} 标记。
+     *
+     * <p>默认 2——CTT 实测脚本 set RedHearts 与 *DMG 粒子的间隔通常 ≤ 1 tick；2 tick 留 50 ms 余量。
+     * 设为 0 等价同步 flush（失去致死性识别能力）。
+     */
+    public int bufferDelayTicks = 2;
+
+    /**
+     * G7b · PendingDamageBuffer 容量上限。溢出时丢最老 entry，{@code overflowDropped}
+     * 计数 +1。默认 4096——CTT 高强度战斗 ≤ 200 events/s × 2 tick delay ≈ 20 entries 同时驻留，
+     * 4096 足够 5 倍冗余。
+     */
+    public int bufferMaxSize = 4096;
+
+    /**
+     * G7b · 三指标 AND 子规则总闸。{@code useDamageBuffer=true} 但本字段 false 时
+     * buffer 仍跑（用于诊断 + flush 时仍按"无致死性识别"路径发回 normal 归属），
+     * 但不触发 outlier / lethal-mechanism 路由。
+     */
+    public boolean p95OutlierEnabled = true;
+
+    /**
+     * G7b · per-(player, weapon) P95 滑窗容量 N。默认 100——20~50 数量级偏小波动大；
+     * 200 数量级响应慢且内存多倍。100 在响应 / 稳定之间最佳。
+     */
+    public int p95WindowSize = 100;
+
+    /**
+     * G7b · 启用 P95 判定的最小样本数。{@code window.size &lt; minSamples} 时
+     * {@code p95(uuid, weaponId)} 返回 -1，AND 关系下 P95 维度判定跳过——降级为
+     * "纯地板门 + DPS 门"双指标 AND（对应 minSamples 期间纯 G7a 兜底场景，
+     * 详见 V2.1 §6.4 / 大白话 §四）。默认 20。
+     */
+    public int p95MinSamples = 20;
+
+    /**
+     * G7b · P95 维度阈值乘数 K_p：阈值 = {@code P95 × K_p}。
+     *
+     * <p>默认 3——配合 {@link #outlierAbsoluteFloor} = 800 + ABC 三武器场景下：
+     * <ul>
+     *   <li>合法 600 单刀：被 floor=800 拦在前，永远不触发</li>
+     *   <li>异常 1000 + B 武器主导（P95=300）：阈值 900 ✓ 命中</li>
+     *   <li>异常 1000 + A 武器主导（P95=10）：阈值 30 ✓ 命中</li>
+     * </ul>
+     * 详见 {@code 大额伤害过滤器.md} §四。
+     */
+    public int p95OutlierMultiplier = 3;
+
+    /**
+     * G7b · DPS 维度阈值乘数 M_d：阈值 = {@code DPS_active × M_d}。
+     * 用 {@code int * 0.5} 表达半数倍——内部按 {@code damage > dps × M_d} 整数运算时
+     * 用 {@code damage * 2 > dps × (2 × M_d)}，避免浮点。
+     *
+     * <p>默认 1.5（内部为 {@code dpsActiveMultiplierTimes2 = 3}，即 ×1.5）。
+     */
+    public double dpsActiveMultiplier = 1.5;
+
+    /**
+     * G7b · 三指标 AND 第三项·绝对地板。{@code damage &gt; outlierAbsoluteFloor} 才进 AND 后续判定，
+     * 否则直接放行。
+     *
+     * <p>默认 800——介于"已知合法最大单刀 600"（C 武器）与"已知异常 1000"之间。
+     * 调参原则：
+     * <ul>
+     *   <li>过低（&lt; 600）→ 误伤合法单刀</li>
+     *   <li>过高（&gt; 1000）→ 漏过异常</li>
+     *   <li>800 = 中点 + 33% 余量，最稳</li>
+     * </ul>
+     *
+     * <p>设为 0 等价禁用本道门——AND 退化为 V2.1 双指标（容易在 B 武器主导时漏过 1000）。
+     */
+    public int outlierAbsoluteFloor = 800;
+
     // ===== I/O =====
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path SERVER_CONFIG_PATH = FabricLoader.getInstance()
@@ -392,12 +480,20 @@ public class ServerConfig {
         if (configVersion < 4) {
             // v8.x · 承伤广播阈值默认从 1 改为 0。条件覆写：旧值正好是默认 1 时才改 0，
             //   用户改过（5 / 10 / ...）的值保留。
-            //   broadcastDamageThreshold 是 v8.x 新字段，旧 JSON 没有，反序列化为默认值 0，
+            //   broadcastDamageThreshold 是 v8.x 新字段，旧 JSON 没有，反序列化为默认值 0,
             //   不需要专门处理。
             if (this.broadcastTakenThreshold == 1) {
                 this.broadcastTakenThreshold = 0;
                 changed = true;
             }
+        }
+        if (configVersion < 5) {
+            // v8.x · G7b 三指标 AND + PendingDamageBuffer 引入。
+            //   useDamageBuffer / bufferDelayTicks / bufferMaxSize / p95OutlierEnabled /
+            //   p95WindowSize / p95MinSamples / p95OutlierMultiplier / dpsActiveMultiplier /
+            //   outlierAbsoluteFloor 都是新字段，旧 JSON 反序列化为默认值——直接用即可，
+            //   不需要专门覆写。本分支仅作为版本号升级占位，让 migrate 链能跨版本递推。
+            changed = true;
         }
         // 任何迁移分支跑完后把版本号顶到当前。
         if (configVersion < CURRENT_CONFIG_VERSION) {
@@ -486,6 +582,26 @@ public class ServerConfig {
             }
             if (obj.has("suspectVictimDamageThreshold"))
                 dst.suspectVictimDamageThreshold = obj.get("suspectVictimDamageThreshold").getAsInt();
+
+            // ===== v8.x · G7b 三指标 AND（首次 legacy 迁移路径不会有这些字段，但加上保险） =====
+            if (obj.has("useDamageBuffer"))
+                dst.useDamageBuffer = obj.get("useDamageBuffer").getAsBoolean();
+            if (obj.has("bufferDelayTicks"))
+                dst.bufferDelayTicks = obj.get("bufferDelayTicks").getAsInt();
+            if (obj.has("bufferMaxSize"))
+                dst.bufferMaxSize = obj.get("bufferMaxSize").getAsInt();
+            if (obj.has("p95OutlierEnabled"))
+                dst.p95OutlierEnabled = obj.get("p95OutlierEnabled").getAsBoolean();
+            if (obj.has("p95WindowSize"))
+                dst.p95WindowSize = obj.get("p95WindowSize").getAsInt();
+            if (obj.has("p95MinSamples"))
+                dst.p95MinSamples = obj.get("p95MinSamples").getAsInt();
+            if (obj.has("p95OutlierMultiplier"))
+                dst.p95OutlierMultiplier = obj.get("p95OutlierMultiplier").getAsInt();
+            if (obj.has("dpsActiveMultiplier"))
+                dst.dpsActiveMultiplier = obj.get("dpsActiveMultiplier").getAsDouble();
+            if (obj.has("outlierAbsoluteFloor"))
+                dst.outlierAbsoluteFloor = obj.get("outlierAbsoluteFloor").getAsInt();
         } catch (Exception ignored) {
         }
     }
@@ -505,5 +621,15 @@ public class ServerConfig {
         if (physicalCeilMultiplier < 0) physicalCeilMultiplier = 0;
         if (sessionBoundaryGuardTicks < 0) sessionBoundaryGuardTicks = 0;
         if (lowNoiseWhitelistRadius < 0) lowNoiseWhitelistRadius = 0.0;
+
+        // ===== v8.x · G7b 三指标 AND 兜底 =====
+        if (bufferDelayTicks < 0) bufferDelayTicks = 0;
+        if (bufferMaxSize < 16) bufferMaxSize = 4096;
+        if (p95WindowSize < 1) p95WindowSize = 100;
+        if (p95MinSamples < 1) p95MinSamples = 20;
+        if (p95MinSamples > p95WindowSize) p95MinSamples = p95WindowSize;
+        if (p95OutlierMultiplier < 1) p95OutlierMultiplier = 3;
+        if (dpsActiveMultiplier < 0) dpsActiveMultiplier = 0;
+        if (outlierAbsoluteFloor < 0) outlierAbsoluteFloor = 0;
     }
 }

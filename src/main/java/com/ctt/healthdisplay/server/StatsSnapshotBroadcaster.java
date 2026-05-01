@@ -226,13 +226,23 @@ public final class StatsSnapshotBroadcaster {
             // v6.6.7 · HUD 关行 DPS 数据源：最近 5 秒伤害量
             long recent5sSum = PlayerDpsTracker.recent5sSum(uuid);
 
+            // v8.x · L 面板顶部摘要：当前主手武器维度（weaponId / DPS_active / P95 / 样本数）
+            String currentWeaponId = com.ctt.healthdisplay.server.filter.WeaponIdResolver
+                    .resolveCurrent(uuid);
+            long weaponDpsActive = PlayerDpsTracker.dpsActiveByWeapon(uuid, currentWeaponId);
+            int weaponP95 = com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry
+                    .p95(uuid, currentWeaponId);
+            int weaponP95Samples = com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry
+                    .sampleCount(uuid, currentWeaponId);
+
             playerEntries.add(new StatsSnapshotPayload.PlayerEntry(
                     uuid, names.getOrDefault(uuid, "?"),
                     dealt, taken, kills, boss, assists,
                     dealtEv, dealtMax, takenEv, takenMax,
                     lastIdx,
                     rows,
-                    recent5sSum
+                    recent5sSum,
+                    currentWeaponId, weaponDpsActive, weaponP95, weaponP95Samples
             ));
         }
 

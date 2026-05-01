@@ -222,6 +222,9 @@ public final class PlayerDamageStats {
         PlayerKillStats.syncStart();
         PlayerTakenStats.syncStart();
         PlayerDpsTracker.clearAll();
+        // v8.x · 联动清空 G7b 训练样本 / buffer，避免上局残留干扰新局判定
+        com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry.clearAll();
+        com.ctt.healthdisplay.server.filter.PendingDamageBuffer.clearAll();
     }
 
     public static void stop() {
@@ -230,6 +233,8 @@ public final class PlayerDamageStats {
         PlayerKillStats.syncStop();
         PlayerTakenStats.syncStop();
         PlayerDpsTracker.clearAll();
+        com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry.clearAll();
+        com.ctt.healthdisplay.server.filter.PendingDamageBuffer.clearAll();
     }
 
     public static void clear() {
@@ -246,6 +251,8 @@ public final class PlayerDamageStats {
         PlayerKillStats.syncClear();
         PlayerTakenStats.syncClear();
         PlayerDpsTracker.clearAll();
+        com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry.clearAll();
+        com.ctt.healthdisplay.server.filter.PendingDamageBuffer.clearAll();
     }
 
     /** v6.5.2 · 重置所有累计状态（start / clear 共用）。 */

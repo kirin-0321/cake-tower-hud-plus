@@ -377,6 +377,49 @@ public final class AttackerProbe {
         recordFromDamageShower(server, victim, victimWorld, damage, tick, null, null);
     }
 
+    /**
+     * v8.x · 纯查询版本的 {@link #recordFromDamageShower}：返回当前归属结果但**不写入任何统计**。
+     *
+     * <p>用途：{@link com.ctt.healthdisplay.server.filter.PendingDamageBuffer} 在 enqueue 时
+     * 提前确定 attackerUuid + label + layer，flush 阶段直接复用——避免 buffer.flush 时
+     * 因为时间已过 N tick 而拿到不同的归属（CTT 高频武器 typecache 早就被覆盖）。
+     *
+     * <p>本方法不调用 {@link #feedStats}、不写
+     * {@link com.ctt.healthdisplay.server.VictimLethalCandidate} /
+     * {@link com.ctt.healthdisplay.server.VictimDamageContributors} /
+     * {@link VictimLastHitter}，也不发聊天广播。
+     *
+     * @return 归属快照；victim 不属于战斗实体 (`commandTags` 无 "E") 或 server/world 为 null 时返回 {@link Attribution#unattributed}
+     */
+    public static Attribution tryAttribute(MinecraftServer server, Entity victim,
+                                           ServerWorld victimWorld, long tick) {
+        if (server == null || victim == null || victimWorld == null) return Attribution.unattributed();
+        if (!victim.getCommandTags().contains("E")) return Attribution.unattributed();
+        UUID victimUuid = victim.getUuid();
+        Vec3d victimPos = victim.getPos();
+        String worldKey = victimWorld.getRegistryKey().getValue().toString();
+
+        // 优先从 typecache 读最近的精确归属
+        VictimTypeCache.Snap typeSnap = VictimTypeCache.get(victimUuid, tick);
+        if (typeSnap != null && typeSnap.attackerUuid() != null) {
+            return new Attribution(typeSnap.layer(), typeSnap.attackerUuid(),
+                    typeSnap.attackerLabel(), typeSnap.detail());
+        }
+        // fallback: AllDMG 通道完整归属链路
+        Result r = attribute(server, victimWorld, victim, victimUuid,
+                ALL_DMG_OBJECTIVE, victimPos, worldKey, tick);
+        return new Attribution(r.layer, r.attackerUuid, r.attackerLabel, r.detail);
+    }
+
+    /**
+     * 纯查询返回的归属快照（不可变）。{@link #attackerUuid} 为 null 时归属失败。
+     */
+    public record Attribution(Layer layer, UUID attackerUuid, String attackerLabel, String detail) {
+        private static final Attribution UNATTRIBUTED =
+                new Attribution(Layer.L9_NONE, null, "<unattributed>", "no-victim");
+        public static Attribution unattributed() { return UNATTRIBUTED; }
+    }
+
     /** v6.5.2 兼容入口：带 forceLayer 但不带 reason。 */
     public static void recordFromDamageShower(MinecraftServer server, Entity victim,
                                               ServerWorld victimWorld, int damage, long tick,

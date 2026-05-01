@@ -1,6 +1,7 @@
 package com.ctt.healthdisplay.server.filter;
 
 import com.ctt.healthdisplay.config.ServerConfig;
+import com.ctt.healthdisplay.server.PlayerDpsTracker;
 import com.ctt.healthdisplay.server.PlayerInventoryIndex;
 import com.ctt.healthdisplay.server.StageBoundaryDispatcher;
 import net.minecraft.entity.Entity;
@@ -175,6 +176,104 @@ public final class DamageFilterPipeline {
     private static FilterDecision record(FilterReason reason, int damage) {
         FilterDiagReport.observe(reason, damage);
         return FilterDecision.filter(reason);
+    }
+
+    // =========================================================================
+    //  G7b · 三指标 AND outlier 判定（v8.x 引入；buffer.flush 阶段调用）
+    // =========================================================================
+
+    /**
+     * G7b · 三指标 AND outlier 判定。{@link com.ctt.healthdisplay.server.DamageProbe}
+     * 在 {@link PendingDamageBuffer.FlushHandler} 内调用——entry 已带入队时刻的
+     * attacker 解析 + 主手 weaponId + wasLethalAtBuffer 快照。
+     *
+     * <h3>三道门（全部 AND）</h3>
+     * <ol>
+     *   <li><b>地板门</b>（{@link ServerConfig#outlierAbsoluteFloor}，默认 800）：
+     *       {@code damage &gt; floor}，否则放行</li>
+     *   <li><b>P95 门</b>（{@link ServerConfig#p95OutlierMultiplier}，默认 ×3）：
+     *       {@code damage &gt; P95 × K_p}，P95 样本不足或归属失败时放行（降级 1）</li>
+     *   <li><b>DPS 门</b>（{@link ServerConfig#dpsActiveMultiplier}，默认 ×1.5）：
+     *       {@code damage &gt; DPS_active × M_d}；停打 ≥ 5 秒 DPS=0 时阈值=0（任何 damage 必超）→
+     *       AND 退化为"地板 + P95"双指标</li>
+     * </ol>
+     *
+     * <h3>路由</h3>
+     * <ul>
+     *   <li>三门全过 + {@code wasLethalAtBuffer} → {@link FilterReason#LETHAL_MECHANISM}
+     *       （lethal-mechanism；{@link FilterReason#writesContributors()} = true，击杀仍归属）</li>
+     *   <li>三门全过 + 非致死 → {@link FilterReason#OUTLIER}
+     *       （outlier；不写 contributors）</li>
+     *   <li>任一门未过 → {@link FilterDecision#pass()}（buffer.flush handler 走正常归属）</li>
+     * </ul>
+     *
+     * <p>命中后自动调 {@link FilterDiagReport#observe} 登记诊断；调用方据此决定路由。
+     */
+    public static FilterDecision evaluateOutlierG7b(PendingDamageBuffer.Entry entry) {
+        if (entry == null) return FilterDecision.pass();
+        ServerConfig cfg = ServerConfig.INSTANCE;
+        if (!cfg.filterEnabled || !cfg.useDamageBuffer || !cfg.p95OutlierEnabled) {
+            return FilterDecision.pass();
+        }
+
+        int damage = entry.damage();
+        if (damage <= 0) return FilterDecision.pass();
+
+        // ---- 门 1：绝对地板 ----
+        // floor=0 → 禁用本道门，AND 退化为 V2.1 双指标
+        int floor = cfg.outlierAbsoluteFloor;
+        if (floor > 0 && damage <= floor) return FilterDecision.pass();
+
+        // ---- 门 2：P95 × K_p ----
+        // 归属失败 / weaponId 为 EMPTY / 样本不足 → 降级放行
+        UUID atk = entry.attackerUuid();
+        String weaponId = entry.weaponId();
+        if (atk == null || weaponId == null || weaponId.isEmpty()
+                || WeaponIdResolver.EMPTY.equals(weaponId)) {
+            return FilterDecision.pass();
+        }
+        int p95 = PerPlayerWeaponP95Registry.p95(atk, weaponId);
+        if (p95 <= 0) return FilterDecision.pass();
+        long p95Threshold = (long) p95 * (long) Math.max(1, cfg.p95OutlierMultiplier);
+        if ((long) damage <= p95Threshold) return FilterDecision.pass();
+
+        // ---- 门 3：DPS_active × M_d ----
+        // DPS_active=0（停打 ≥ 5 秒）时阈值=0，必超 → 等价"只看门 1 + 门 2"
+        long dps = PlayerDpsTracker.dpsActiveByWeapon(atk, weaponId);
+        long dpsThreshold = (long) Math.floor(dps * Math.max(0, cfg.dpsActiveMultiplier));
+        if ((long) damage <= dpsThreshold) return FilterDecision.pass();
+
+        // 三门全过：致死 → lethal-mechanism；否则 → outlier
+        FilterReason reason = entry.wasLethalAtBuffer()
+                ? FilterReason.LETHAL_MECHANISM : FilterReason.OUTLIER;
+        return record(reason, damage);
+    }
+
+    /**
+     * 入样规则：buffer.flush 判定为"放行"的事件是否进 P95 / DPS 训练样本。
+     *
+     * <p>沿用 {@code DAMAGE_FILTER_DESIGN_V2.md} §6.2 + 大白话规则 1：
+     * <ul>
+     *   <li>{@code attackerUuid != null}（归属成功）</li>
+     *   <li>{@code !wasLethalAtBuffer}（致死高光不入样，避免污染日常分布）</li>
+     *   <li>{@code damage ≥ lowDamageFloor}（≥ 3，避免 DoT 拉低 P95）</li>
+     *   <li>{@code victim.Defence ≤ defenceExclusionThreshold}（避免高护甲减伤拉低 P95）</li>
+     *   <li>{@code weaponId} 非 EMPTY（空手分桶无意义）</li>
+     * </ul>
+     */
+    public static boolean shouldObserveSample(PendingDamageBuffer.Entry entry) {
+        if (entry == null) return false;
+        if (entry.attackerUuid() == null) return false;
+        if (entry.wasLethalAtBuffer()) return false;
+        ServerConfig cfg = ServerConfig.INSTANCE;
+        if (entry.damage() < Math.max(1, cfg.lowDamageFloor)) return false;
+        String w = entry.weaponId();
+        if (w == null || w.isEmpty() || WeaponIdResolver.EMPTY.equals(w)) return false;
+        Entity victim = entry.victim();
+        if (victim != null && readVictimDefence(victim) > cfg.defenceExclusionThreshold) {
+            return false;
+        }
+        return true;
     }
 
     // =========================================================================

@@ -38,6 +38,10 @@ import java.util.UUID;
  * byte version
  *   v1 (v6.6.5)：基础全量字段
  *   v2 (v6.6.7)：PlayerEntry 末尾追加 recent5sSum (varLong) ← HUD 关行 DPS 数据源
+ *   v3 (v8.x)  ：PlayerEntry 末尾追加当前主手武器维度 4 字段：
+ *                shortString currentWeaponId, varLong weaponDpsActive,
+ *                varInt weaponP95, varInt weaponP95Samples
+ *                ← L 面板顶部摘要 + 三道门阈值显示
  * long  startMs / activeDurationMs / startTick
  * bool  live / frozen
  * varInt unattributedKills
@@ -56,6 +60,8 @@ import java.util.UUID;
  *                    StageRow[]: stageIdx, dealt / taken / kills / bossKills / assists,
  *                                dealtEvents / dealtMaxHit / takenEvents / takenMaxHit
  *                  [v2+] varLong recent5sSum
+ *                  [v3+] shortString currentWeaponId, varLong weaponDpsActive,
+ *                        varInt weaponP95, varInt weaponP95Samples
  * </pre>
  *
  * <h2>StageKey 索引化</h2>
@@ -75,7 +81,7 @@ public record StatsSnapshotPayload(
         List<PlayerEntry> players
 ) implements CustomPayload {
 
-    public static final byte CURRENT_VERSION = 2;
+    public static final byte CURRENT_VERSION = 3;
 
     public static final CustomPayload.Id<StatsSnapshotPayload> ID = new CustomPayload.Id<>(
             Identifier.of("ctt-health-display", "stats_snapshot")
@@ -118,6 +124,9 @@ public record StatsSnapshotPayload(
      * 一个玩家的总累计 + 各关切片行。
      * <p>v2 起追加 {@code recent5sSum}：最近 5 秒造成伤害量（HUD 关行 DPS = sum / 5）。
      * 老 v1 包反序列化时此字段恒 0。
+     * <p>v3 起追加 4 个"当前主手武器维度"字段，让 L 面板顶部摘要能直接显示
+     * {@code P95=10(87/100)×3=30  DPS=200×1.5=300  floor=800}。
+     * 老 v1/v2 包反序列化时这些字段为空字符串 / 0 / -1。
      */
     public record PlayerEntry(
             UUID uuid,
@@ -133,7 +142,11 @@ public record StatsSnapshotPayload(
             int takenMaxHit,
             int lastSeenStageIdx,    // -1 = none
             List<StageRow> stageRows,
-            long recent5sSum         // v2 新增；v1 解码时 = 0
+            long recent5sSum,        // v2 新增；v1 解码时 = 0
+            String currentWeaponId,  // v3 新增；玩家当前主手 weaponId（"empty" 表空手）
+            long weaponDpsActive,    // v3 新增；当前主手武器最近 5 秒 DPS_active
+            int weaponP95,           // v3 新增；当前主手武器 P95（-1 = 样本不足）
+            int weaponP95Samples     // v3 新增；当前主手武器 P95 窗口当前样本数
     ) {}
 
     /** 玩家在一关里的切片数据。{@code stageIdx} 索引到 {@code stages[]}。 */
@@ -207,6 +220,11 @@ public record StatsSnapshotPayload(
             }
             // v2 · HUD 关行 DPS 滑窗：最近 5 秒伤害量
             buf.writeVarLong(e.recent5sSum);
+            // v3 · 当前主手武器维度（L 面板顶部摘要）
+            writeShortString(buf, e.currentWeaponId == null ? "" : e.currentWeaponId);
+            buf.writeVarLong(e.weaponDpsActive);
+            buf.writeVarInt(e.weaponP95);
+            buf.writeVarInt(e.weaponP95Samples);
         }
     }
 
@@ -287,12 +305,18 @@ public record StatsSnapshotPayload(
             }
             // v2 起追加 recent5sSum；v1 包此字段缺省为 0
             long recent5sSum = (ver >= 2) ? buf.readVarLong() : 0L;
+            // v3 起追加当前主手武器维度 4 字段；v1/v2 包此处缺省值
+            String currentWeaponId = (ver >= 3) ? readShortString(buf) : "";
+            long weaponDpsActive   = (ver >= 3) ? buf.readVarLong() : 0L;
+            int  weaponP95         = (ver >= 3) ? buf.readVarInt()  : -1;
+            int  weaponP95Samples  = (ver >= 3) ? buf.readVarInt()  : 0;
             players.add(new PlayerEntry(uuid, name, dealt, taken,
                     kills, bossKills, assists,
                     dealtEvents, dealtMax, takenEvents, takenMax,
                     lastSeenIdx,
                     Collections.unmodifiableList(rows),
-                    recent5sSum));
+                    recent5sSum,
+                    currentWeaponId, weaponDpsActive, weaponP95, weaponP95Samples));
         }
 
         // v8.1.1 · 末尾保险阀：如果未来版本忘了 bump version 但只在 payload 末尾追加了

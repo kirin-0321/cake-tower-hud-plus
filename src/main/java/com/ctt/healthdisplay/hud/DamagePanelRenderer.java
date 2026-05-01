@@ -3,16 +3,20 @@ package com.ctt.healthdisplay.hud;
 import com.ctt.healthdisplay.client.ClientDamageProbe;
 import com.ctt.healthdisplay.client.ClientStatsCache;
 import com.ctt.healthdisplay.config.ModConfig;
+import com.ctt.healthdisplay.config.ServerConfig;
 import com.ctt.healthdisplay.server.AttackerProbe;
 import com.ctt.healthdisplay.server.DamageProbe;
 import com.ctt.healthdisplay.server.PlayerDamageStats;
 import com.ctt.healthdisplay.server.PlayerKillStats;
 import com.ctt.healthdisplay.server.PlayerTakenStats;
 import com.ctt.healthdisplay.server.StageKey;
+import com.ctt.healthdisplay.server.filter.WeaponIdResolver;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
+
+import java.util.UUID;
 
 /**
  * v6.3.1 · 伤害分配面板渲染器（无背景纯文字风格 · 全屏可交互）。
@@ -38,6 +42,8 @@ public final class DamagePanelRenderer {
     // v6.5.5 · 关卡位置行高（位于 title 与 summary 之间）。
     public static final int STAGE_LOC_H = 10;
     public static final int SUMMARY_H   = 12;
+    /** v8.x · 当前主手武器 G7b 摘要行高（武器名 + P95 + DPS + floor 阈值）。 */
+    public static final int WEAPON_G7B_H = 10;
     // v6.5.0 · 详情行高 34 → 44：新增第二条 detail 行显示承伤 / 峰值。
     public static final int ROW_H_DETAIL = 44; // name/value + 细节 1 + 细节 2 + 进度条
     public static final int ROW_H_COMPACT = 11;
@@ -95,6 +101,8 @@ public final class DamagePanelRenderer {
     /** 整个面板高度（依赖快照内容 + 详情模式）。 */
     public static int measureHeight(PlayerDamageStats.Snapshot snap, boolean detailed) {
         int h = TITLE_H + STAGE_LOC_H + SUMMARY_H;
+        // v8.x · 主手武器 G7b 摘要行始终保留——即使空手也显示 weapon=empty 占位
+        h += WEAPON_G7B_H;
         // v7.0.0 · P0 客户端探针顶栏行——与 drawCore 的判断对称
         if (ClientDamageProbe.INSTANCE.hasAnyData()) {
             h += CDP_HEADER_H;
@@ -206,6 +214,10 @@ public final class DamagePanelRenderer {
         drawSummary(ctx, tr, snap, x, cy);
         cy += SUMMARY_H;
 
+        // v8.x · 主手武器 G7b 摘要行：当前手持 + P95 + DPS_active + 三道门阈值
+        drawWeaponG7b(ctx, tr, x, cy);
+        cy += WEAPON_G7B_H;
+
         // v7.0.0 · P0 客户端探针顶栏行——只在有数据时画，无数据则不占行高
         // （和 measureHeight 内的判断对称）。
         if (ClientDamageProbe.INSTANCE.hasAnyData()) {
@@ -291,6 +303,110 @@ public final class DamagePanelRenderer {
                         ? "切到整局视图 (Session)"
                         : "切到当前关视图 (Current Stage)"
         };
+    }
+
+    /**
+     * v8.x · 当前主手武器 G7b 摘要行（异常过滤器 P95 + DPS_active + 三道门阈值）。
+     *
+     * <p>显示样式（紧凑单行 · 280px 面板可放下）：
+     * <pre>
+     * 武器 nutStickLaser  P95=10(87/100)×3=30  DPS=200×1.5=300  fl=800
+     * </pre>
+     *
+     * <h3>语义</h3>
+     * <ul>
+     *   <li>{@code 武器=...} —— 当前主手武器 ID（custom_data key 优先，vanilla item id 兜底，
+     *       空手时为 {@code empty}）</li>
+     *   <li>{@code P95=N(s/cap)×K=t1} —— 该武器最近 N 刀的高位线 + 样本进度 + 门 2 阈值。
+     *       样本不足时 P95 显示 {@code -}（AND 关系下该门跳过判定）。</li>
+     *   <li>{@code DPS=D×Md=t2} —— 该武器最近 5 秒非空桶平均 + 门 3 阈值。
+     *       停打 ≥ 5 秒 DPS=0 时阈值=0（任何 damage 必超）→ 退化为只看 fl + P95。</li>
+     *   <li>{@code fl=N} —— 门 1 绝对地板阈值</li>
+     * </ul>
+     *
+     * <h3>数据源</h3>
+     * <p>{@link ClientStatsCache} → 集成模式直读 server static；远程客户端走 v3 S2C payload 缓存。
+     */
+    private static void drawWeaponG7b(DrawContext ctx, TextRenderer tr, int x, int y) {
+        UUID localUuid = localPlayerUuid();
+        ServerConfig cfg = ServerConfig.INSTANCE;
+
+        String weaponId;
+        long dpsActive;
+        int p95;
+        int p95Samples;
+        if (localUuid == null) {
+            weaponId = WeaponIdResolver.EMPTY;
+            dpsActive = 0L;
+            p95 = -1;
+            p95Samples = 0;
+        } else {
+            weaponId = ClientStatsCache.currentWeaponId(localUuid);
+            dpsActive = ClientStatsCache.currentWeaponDpsActive(localUuid);
+            p95 = ClientStatsCache.currentWeaponP95(localUuid);
+            p95Samples = ClientStatsCache.currentWeaponP95Samples(localUuid);
+        }
+
+        // 武器名截断到 12 char（避免挤出右侧）
+        String displayWeapon = weaponId == null || weaponId.isEmpty() ? "-" : weaponId;
+        if (displayWeapon.startsWith("minecraft:")) displayWeapon = displayWeapon.substring(10);
+        if (displayWeapon.length() > 12) displayWeapon = displayWeapon.substring(0, 11) + "…";
+
+        int kp = Math.max(1, cfg.p95OutlierMultiplier);
+        long p95Threshold = p95 > 0 ? (long) p95 * kp : -1;
+        long dpsThreshold = (long) Math.floor(dpsActive * Math.max(0, cfg.dpsActiveMultiplier));
+
+        String p95Str = p95 > 0
+                ? String.format("P95=%d(%d/%d)\u00d7%d=%d",
+                        p95, p95Samples, Math.max(1, cfg.p95WindowSize), kp, p95Threshold)
+                : String.format("P95=-(%d/%d)", p95Samples, Math.max(1, cfg.p95WindowSize));
+
+        // dpsActiveMultiplier 是 double——用 %s 自定义格式（去掉无意义小数 ".0"）
+        String mdStr = formatMultiplier(cfg.dpsActiveMultiplier);
+        String dpsStr = String.format("DPS=%d\u00d7%s=%d", dpsActive, mdStr, dpsThreshold);
+
+        String floorStr = "fl=" + Math.max(0, cfg.outlierAbsoluteFloor);
+
+        // 整行：「武器 X · P95=... · DPS=... · fl=...」
+        // 用空格分隔 + 颜色区分 label / value 提升可读性
+        int cx = x + PADDING_X;
+
+        // "武器 "
+        Text labelWeapon = Text.literal("\u6b66\u5668 ");
+        ctx.drawText(tr, labelWeapon, cx, y + 1, COLOR_LABEL, true);
+        cx += tr.getWidth(labelWeapon);
+        ctx.drawText(tr, Text.literal(displayWeapon), cx, y + 1, COLOR_VALUE, true);
+        cx += tr.getWidth(displayWeapon) + 4;
+
+        // P95 段
+        ctx.drawText(tr, Text.literal(p95Str), cx, y + 1, COLOR_PERCENT, true);
+        cx += tr.getWidth(p95Str) + 4;
+
+        // DPS 段
+        ctx.drawText(tr, Text.literal(dpsStr), cx, y + 1, COLOR_LIVE, true);
+        cx += tr.getWidth(dpsStr) + 4;
+
+        // floor 段
+        ctx.drawText(tr, Text.literal(floorStr), cx, y + 1, COLOR_LABEL, true);
+    }
+
+    /** 把 dpsActiveMultiplier 这个 double 渲染成简短字符串：1.5 → "1.5"; 2.0 → "2"; 1.25 → "1.25"。 */
+    private static String formatMultiplier(double v) {
+        if (v == Math.floor(v) && !Double.isInfinite(v)) {
+            return Long.toString((long) v);
+        }
+        // 最多保留 2 位小数，去掉尾随 0
+        String s = String.format("%.2f", v);
+        if (s.endsWith("0")) s = s.substring(0, s.length() - 1);
+        if (s.endsWith(".")) s = s.substring(0, s.length() - 1);
+        return s;
+    }
+
+    /** 取当前客户端本地玩家 UUID；尚未 JOIN（如启动画面）返回 null。 */
+    private static UUID localPlayerUuid() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc == null || mc.player == null) return null;
+        return mc.player.getUuid();
     }
 
     /**

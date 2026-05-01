@@ -130,6 +130,10 @@ public class CttStatsServer implements ModInitializer {
             // v8.3.0 · M7 · 清 MobHealthBroadcaster 的 LAST_SENT，避免下次同 UUID 重连
             // 后被差量逻辑误判成"和上次一样"而首帧不推送。
             MobHealthBroadcaster.onPlayerDisconnect(uuid);
+            // v8.x · 异常过滤器 G7b · per-(player, weapon) P95 训练样本 + per-weapon DPS 桶
+            // 玩家离线后立即释放，避免长期累积内存
+            com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry.evict(uuid);
+            PlayerDpsTracker.evict(uuid);
         });
 
         ServerTickEvents.END_SERVER_TICK.register(DamageProbe::flushTick);
