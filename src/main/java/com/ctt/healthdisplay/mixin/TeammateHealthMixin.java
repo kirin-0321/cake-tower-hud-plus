@@ -129,7 +129,8 @@ public abstract class TeammateHealthMixin<S extends EntityRenderState> {
         if (mobMap.isEmpty()) return null;
 
         for (MobHealthData mob : mobMap.values()) {
-            if (mob.name.equalsIgnoreCase(displayName) || displayName.contains(mob.name) || mob.name.contains(displayName)) {
+            String mobName = mob.name();
+            if (mobName.equalsIgnoreCase(displayName) || displayName.contains(mobName) || mobName.contains(displayName)) {
                 return mob;
             }
         }

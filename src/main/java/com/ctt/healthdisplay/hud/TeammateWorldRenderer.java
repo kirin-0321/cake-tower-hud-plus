@@ -159,10 +159,15 @@ public class TeammateWorldRenderer {
         float barH = 6;
         float barTop = 2;
 
-        String nameStr = data.name;
+        // v8.3.6 · MobHealthData 升级到 Text nameText 后，名字按 OrderedText 画，
+        // 颜色由 Text 自带 Style 携带（白色 fallback），不再读 data.nameColor，
+        // 客户端中文 / 英文 lang 自动渲染不同字面量，translate 键过线后由 vanilla
+        // textRenderer 用本地 lang 文件还原。
+        Text nameText = data.nameText != null ? data.nameText : Text.empty();
+        OrderedText nameOrdered = nameText.asOrderedText();
         Text suffixText = data.suffixText != null ? data.suffixText : Text.empty();
-        String suffixPlain = suffixText.getString();
-        float suffixW = textRenderer.getWidth(suffixPlain);
+        OrderedText suffixOrdered = suffixText.asOrderedText();
+        float suffixW = textRenderer.getWidth(suffixOrdered);
 
         // v5.1.10：完全对齐 MC 原版玩家名牌（EntityRenderer.renderLabelIfPresent）——
         //   1) textLayer = SEE_THROUGH，保持"穿墙仍可见"；
@@ -181,15 +186,14 @@ public class TeammateWorldRenderer {
             textRenderer.draw(arrow, -halfW, headerY, 0xFFFFFF55, false, matrix,
                     vertexConsumers, textLayer, textBgColor, light);
             float arrowW = textRenderer.getWidth(arrow);
-            textRenderer.draw(nameStr, -halfW + arrowW, headerY, data.nameColor, false, matrix,
+            textRenderer.draw(nameOrdered, -halfW + arrowW, headerY, 0xFFFFFFFF, false, matrix,
                     vertexConsumers, textLayer, textBgColor, light);
         } else {
-            textRenderer.draw(nameStr, -halfW, headerY, data.nameColor, false, matrix,
+            textRenderer.draw(nameOrdered, -halfW, headerY, 0xFFFFFFFF, false, matrix,
                     vertexConsumers, textLayer, textBgColor, light);
         }
-        if (!suffixPlain.isEmpty()) {
-            OrderedText ordered = suffixText.asOrderedText();
-            textRenderer.draw(ordered, halfW - suffixW, headerY, 0xFFFFFFFF, false, matrix,
+        if (suffixW > 0) {
+            textRenderer.draw(suffixOrdered, halfW - suffixW, headerY, 0xFFFFFFFF, false, matrix,
                     vertexConsumers, textLayer, textBgColor, light);
         }
 

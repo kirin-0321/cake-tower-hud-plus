@@ -5,6 +5,7 @@ import com.ctt.healthdisplay.client.ClientDamageProbe;
 import com.ctt.healthdisplay.client.ClientMobHealthCache;
 import com.ctt.healthdisplay.client.ClientStageProbe;
 import com.ctt.healthdisplay.client.ClientStatsCache;
+import com.ctt.healthdisplay.client.ServerChatNoiseFilter;
 import com.ctt.healthdisplay.client.TriggerEchoFilter;
 import com.ctt.healthdisplay.config.ModConfig;
 import com.ctt.healthdisplay.health.HealthData;
@@ -201,6 +202,9 @@ public class CttHealthDisplay implements ClientModInitializer {
             // v8.1.7 · 优先吞掉本模组自发 /trigger 命令的回显（自己/队友/OP admin 广播都覆盖），
             // 避免 ViewStats / TogglePartyBossbar 每几秒刷一条淹没聊天（反馈 2026-05-01）。
             if (TriggerEchoFilter.shouldHide(message, overlay)) return false;
+            // 再吞掉服务器/地图脚本主动 broadcast 的固定字面噪声（如 "[@] L"、被合并 mod
+            // 折叠成 "[@] L (x137)" 的形态）；规则维护在 ServerChatNoiseFilter.MUTED_LINES。
+            if (ServerChatNoiseFilter.shouldHide(message, overlay)) return false;
             boolean wasReady = statsData.hasData();
             boolean hide = statsData.processMessage(message, overlay);
             return !hide;
@@ -450,23 +454,29 @@ public class CttHealthDisplay implements ClientModInitializer {
             if (closest == null) continue;
             UUID closestUUID = closest.getUuid();
 
+            // v8.3.6 · 切到 Text nameText：用 closest.getDisplayName() 拿到客户端已本地化的
+            // Text（含 translate 键 + Style），渲染端用 OrderedText 直接画，颜色由 Style 携带，
+            // 不再单独维护 nameColor int 字段。
+            net.minecraft.text.Text closestNameText = closest.getDisplayName();
+            if (closestNameText == null) closestNameText = closest.getName();
+            if (closestNameText == null) closestNameText = net.minecraft.text.Text.literal(mobName);
+
             MobHealthData data = map.get(closestUUID);
             if (data == null) {
-                data = new MobHealthData(mobName, bar.suffixText, bar.hp, bar.maxHP, tickCounter);
+                data = new MobHealthData(closestNameText, bar.suffixText, bar.hp, bar.maxHP, tickCounter);
                 map.put(closestUUID, data);
             } else {
+                data.nameText = closestNameText;
                 data.hp = bar.hp;
                 data.maxHP = bar.maxHP;
                 data.suffixText = bar.suffixText;
             }
             data.targetted = true;
             data.lastUpdateTick = tickCounter;
-            net.minecraft.text.TextColor tc = closest.getDisplayName().getStyle().getColor();
-            data.nameColor = tc != null ? (tc.getRgb() | 0xFF000000) : 0xFFFFFFFF;
 
             for (Map.Entry<UUID, MobHealthData> entry : map.entrySet()) {
                 MobHealthData d = entry.getValue();
-                if (!d.name.equals(mobName)) continue;
+                if (!d.name().equals(mobName)) continue;
                 if (!entry.getKey().equals(closestUUID)) {
                     d.targetted = false;
                 }
