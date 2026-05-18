@@ -1,9 +1,6 @@
 plugins {
     id 'fabric-loom' version '1.9-SNAPSHOT'
-    id 'net.darkhax.curseforgegradle' version '1.1.26'
 }
-
-import net.darkhax.curseforgegradle.TaskPublishCurseForge
 
 // 直接运行 `gradlew`（不带参数）= `gradlew build`。
 // build 已经 finalizedBy 'deployToMods'，所以仍然会自动复制 jar 到 mods/。
@@ -135,57 +132,4 @@ tasks.named('remapJar') {
         propsFile.text = text.replaceFirst(/(?m)^mod_version=[\d.]+[ \t]*$/, "mod_version=${newVer}")
         logger.lifecycle("[bumpVersion] ${oldVer} -> ${newVer} (下次构建使用)")
     }
-}
-
-// CurseForge 自动上传任务（v8.4.5+）
-//
-// 使用：
-//   .\gradlew.bat publishCurseForge      只上传当前 remapJar 到 CurseForge
-//   .\gradlew.bat release                编译 + 部署本地 mods/ + 上传 CurseForge
-//
-// 配置：CURSEFORGE_TOKEN 必须放在 C:\Users\Administrator\.gradle\gradle.properties
-//       (永远不要把 token 写进项目里的 gradle.properties，那个会进 git)
-//
-// 设计原则：
-//   * 不挂到 build 上 —— 每次本地编译都会触发 bumpVersion，挂上去会刷爆审核队列
-//   * 必须显式调用 publishCurseForge / release，避免误推
-//   * 复用 CHANGELOG.md（项目根）作为发版日志；不存在时退化到 "Release ${version}"
-
-def curseforgeProjectId = '1546797'  // https://www.curseforge.com/minecraft/mc-mods/cake-tower-hud-plus
-
-tasks.register('publishCurseForge', TaskPublishCurseForge) {
-    group = 'publishing'
-    description = '把当前 remapJar 上传到 CurseForge'
-    dependsOn remapJar
-
-    apiToken = findProperty('CURSEFORGE_TOKEN') ?: System.getenv('CURSEFORGE_TOKEN') ?: ''
-
-    def mainFile = upload(curseforgeProjectId, remapJar.archiveFile)
-    mainFile.displayName  = "Cake Tower HUD Plus ${project.version}"
-    mainFile.releaseType  = 'release'    // 'release' / 'beta' / 'alpha'
-    mainFile.changelogType = 'markdown'
-    mainFile.changelog = file('CHANGELOG.md').exists()
-        ? file('CHANGELOG.md').text
-        : "Release ${project.version}"
-
-    mainFile.addGameVersion('1.21.4')
-    mainFile.addModLoader('Fabric')
-    mainFile.addJavaVersion('Java 21')
-    mainFile.addEnvironment('Client', 'Server')
-
-    mainFile.addRequirement('fabric-api')
-    mainFile.addOptional('modmenu')
-
-    doFirst {
-        if (!apiToken) {
-            throw new GradleException(
-                "CURSEFORGE_TOKEN 未配置。请在 C:\\Users\\Administrator\\.gradle\\gradle.properties 加一行 CURSEFORGE_TOKEN=xxx")
-        }
-    }
-}
-
-tasks.register('release') {
-    group = 'publishing'
-    description = '编译 + 部署本地 mods/ + 上传 CurseForge'
-    dependsOn 'build', 'publishCurseForge'
 }
