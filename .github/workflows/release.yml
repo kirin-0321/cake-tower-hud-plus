@@ -1,0 +1,102 @@
+name: Release to CurseForge
+
+# 触发方式（两种皆可）：
+# 1. push tag：在本地 `git tag v8.4.7 && git push origin v8.4.7` → 自动跑
+# 2. 手动触发：GitHub Repo → Actions → Release to CurseForge → Run workflow，输入版本号
+#
+# 前置条件（一次性配置）：
+#   GitHub Repo → Settings → Secrets and variables → Actions → New repository secret
+#     Name:  CURSEFORGE_TOKEN
+#     Value: 你的 CurseForge API token（生成新的、不要和本地复用）
+#
+# 工作流做什么：
+#   1. checkout 代码
+#   2. 装 JDK 21
+#   3. 用 -Pmod_version=<tag 解析出的版本> 覆盖 gradle.properties 里的 mod_version
+#      → 编出来的 jar 文件名、fabric.mod.json 里的 version 都用这个值
+#   4. 跑 publishCurseForge（依赖 remapJar，会自动编译 + remap，但不跑 build
+#      → 跳过 deployToMods/deployToSecondaryMods 这两个 Windows 本地路径任务）
+#   5. 顺带把 jar 作为 workflow artifact 留 90 天，方便审核没过时直接下载本地手传
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (without v prefix), e.g. 8.4.7'
+        required: true
+        type: string
+
+jobs:
+  release:
+    name: Build & publish ${{ github.event.inputs.version || github.ref_name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # 用于创建 GitHub Release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            # github.ref = refs/tags/v8.4.7 → 取 v 后面的部分
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          # 校验格式：必须形如 X.Y.Z
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$VERSION' does not match X.Y.Z"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $VERSION"
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Build and publish to CurseForge
+        env:
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          ./gradlew publishCurseForge \
+            -Pmod_version=${{ steps.ver.outputs.version }} \
+            --no-daemon \
+            --stacktrace
+
+      - name: Upload built jar as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cake-tower-hud-plus-${{ steps.ver.outputs.version }}
+          path: build/libs/*.jar
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.ver.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          files: build/libs/cake-tower-hud-plus-${{ steps.ver.outputs.version }}.jar
+          generate_release_notes: true
+          draft: false
+          prerelease: false
