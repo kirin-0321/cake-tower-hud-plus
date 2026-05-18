@@ -103,7 +103,8 @@ public abstract class TeammateHealthMixin<S extends EntityRenderState> {
         float halfW = 20;
         float barTop = -12;
         float barH = 3;
-        float fillW = halfW * 2 * pct / 100.0f;
+        float barW = halfW * 2;
+        float fillW = barW * pct / 100.0f;
 
         VertexConsumer bg = vertexConsumers.getBuffer(RenderLayer.getTextBackgroundSeeThrough());
         bg.vertex(matrix, -halfW - 1, barTop + barH + 1, 0.01f).color(0, 0, 0, 100).light(light);
@@ -111,7 +112,21 @@ public abstract class TeammateHealthMixin<S extends EntityRenderState> {
         bg.vertex(matrix, halfW + 1, barTop - 1, 0.01f).color(0, 0, 0, 100).light(light);
         bg.vertex(matrix, -halfW - 1, barTop - 1, 0.01f).color(0, 0, 0, 100).light(light);
 
-        if (fillW > 0) {
+        // v8.4.0 · 服务端推过四色心 + 客户端开关 → 4 层叠加（与玩家自己主血条一致），
+        // 否则旧的"渐变红橙黄绿"单色条。本 mixin 注入的是 vanilla 名牌行
+        // (EntityRenderer.renderLabelIfPresent)，与 TeammateWorldRenderer 互为冗余渲染源 ——
+        // 视觉风格保持一致即可，无需在此引入额外开关。
+        if (ModConfig.INSTANCE.showTeammateLayeredHearts && data.hasLayeredHearts()
+                && data.maxHP > 0) {
+            drawLayer2D(vertexConsumers, matrix, light, -halfW, barTop, barH, barW,
+                    data.hp,          data.maxHP, 0xE84040, 0.022f);
+            drawLayer2D(vertexConsumers, matrix, light, -halfW, barTop, barH, barW,
+                    data.soulHearts,  data.maxHP, 0xDDCC22, 0.023f);
+            drawLayer2D(vertexConsumers, matrix, light, -halfW, barTop, barH, barW,
+                    data.blackHearts, data.maxHP, 0x550088, 0.024f);
+            drawLayer2D(vertexConsumers, matrix, light, -halfW, barTop, barH, barW,
+                    data.blueHearts,  data.maxHP, 0x4488EE, 0.025f);
+        } else if (fillW > 0) {
             int color = getBarColor(pct);
             int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
             VertexConsumer fill = vertexConsumers.getBuffer(RenderLayer.getTextBackgroundSeeThrough());
@@ -122,6 +137,25 @@ public abstract class TeammateHealthMixin<S extends EntityRenderState> {
         }
 
         matrices.pop();
+    }
+
+    /**
+     * v8.4.0 · 名牌路径下画一层 4 色心；val ≤ 0 skip。zOff 按层级递增让叠加顺序与
+     * {@link com.ctt.healthdisplay.hud.HealthBarRenderer#drawLayeredBar} 一致。
+     */
+    private static void drawLayer2D(VertexConsumerProvider vcp, Matrix4f matrix, int light,
+                                    float leftX, float top, float h, float barW,
+                                    int val, int maxHP, int color, float zOff) {
+        if (val <= 0 || maxHP <= 0) return;
+        float pct = Math.min(1f, (float) val / maxHP);
+        float fillW = barW * pct;
+        if (fillW <= 0) return;
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+        VertexConsumer fill = vcp.getBuffer(RenderLayer.getTextBackgroundSeeThrough());
+        fill.vertex(matrix, leftX,         top + h, zOff).color(r, g, b, 200).light(light);
+        fill.vertex(matrix, leftX + fillW, top + h, zOff).color(r, g, b, 200).light(light);
+        fill.vertex(matrix, leftX + fillW, top,     zOff).color(r, g, b, 200).light(light);
+        fill.vertex(matrix, leftX,         top,     zOff).color(r, g, b, 200).light(light);
     }
 
     private static MobHealthData findMobWithHealth(String displayName, Text labelText) {

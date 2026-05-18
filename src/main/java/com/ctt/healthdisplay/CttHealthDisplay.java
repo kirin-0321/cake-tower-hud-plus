@@ -5,6 +5,8 @@ import com.ctt.healthdisplay.client.ClientDamageProbe;
 import com.ctt.healthdisplay.client.ClientMobHealthCache;
 import com.ctt.healthdisplay.client.ClientStageProbe;
 import com.ctt.healthdisplay.client.ClientStatsCache;
+import com.ctt.healthdisplay.client.ClientStatsPushCache;
+import com.ctt.healthdisplay.client.ClientTeamHeartsCache;
 import com.ctt.healthdisplay.client.ServerChatNoiseFilter;
 import com.ctt.healthdisplay.client.TriggerEchoFilter;
 import com.ctt.healthdisplay.config.ModConfig;
@@ -19,8 +21,10 @@ import com.ctt.healthdisplay.hud.StageNameRegistry;
 import com.ctt.healthdisplay.hud.StatsRenderer;
 import com.ctt.healthdisplay.hud.StatsTableScreen;
 import com.ctt.healthdisplay.network.MobHealthPayload;
+import com.ctt.healthdisplay.network.PlayerStatsPayload;
 import com.ctt.healthdisplay.network.StagePayload;
 import com.ctt.healthdisplay.network.StatsSnapshotPayload;
+import com.ctt.healthdisplay.network.TeamHeartsPayload;
 import com.ctt.healthdisplay.server.DamageProbe;
 import net.minecraft.text.Style;
 import net.minecraft.util.Formatting;
@@ -137,6 +141,41 @@ public class CttHealthDisplay implements ClientModInitializer {
             ClientMobHealthCache.onPayload(payload);
         });
 
+        // v8.4.0 · 服务端属性 push payload。集成服务器 / dedicated client 双注册保险。
+        // receiver 切到客户端线程灌 StatsData —— 该对象的字段同时被 HudRenderCallback /
+        // ClientReceiveMessageEvents 读写，必须走 client.execute 保证单线程。
+        try {
+            PayloadTypeRegistry.playS2C().register(PlayerStatsPayload.ID, PlayerStatsPayload.CODEC);
+        } catch (IllegalArgumentException dup) {
+            // 集成服务器：CttStatsServer.onInitialize 已注册，忽略
+        }
+        ClientPlayNetworking.registerGlobalReceiver(PlayerStatsPayload.ID, (payload, ctx) -> {
+            if (Byte.toUnsignedInt(payload.version()) > Byte.toUnsignedInt(PlayerStatsPayload.CURRENT_VERSION)) {
+                return;
+            }
+            ctx.client().execute(() -> {
+                statsData.applyServerSnapshot(
+                        payload.redHearts(), payload.soulHearts(),
+                        payload.blackHearts(), payload.blueHearts(),
+                        payload.lines());
+                ClientStatsPushCache.recordPush();
+            });
+        });
+
+        // v8.4.0 · 全队四色心 push payload。snapshot 是 volatile + immutable map，
+        // receiver 直接调 onPayload 即可（与 ClientMobHealthCache 同款无锁模式）。
+        try {
+            PayloadTypeRegistry.playS2C().register(TeamHeartsPayload.ID, TeamHeartsPayload.CODEC);
+        } catch (IllegalArgumentException dup) {
+            // 集成服务器：CttStatsServer.onInitialize 已注册，忽略
+        }
+        ClientPlayNetworking.registerGlobalReceiver(TeamHeartsPayload.ID, (payload, ctx) -> {
+            if (Byte.toUnsignedInt(payload.version()) > Byte.toUnsignedInt(TeamHeartsPayload.CURRENT_VERSION)) {
+                return;
+            }
+            ClientTeamHeartsCache.onPayload(payload);
+        });
+
         // 切服 / 断线时清缓存，避免悬挂上一局数据。
         // v8.1.0 起 ClientDamageProbe.resetForDisconnect 内部会先 freezeCurrentStage +
         // CdpPersistence.save，再清内存——这里调用方不需要额外操作。
@@ -147,6 +186,12 @@ public class CttHealthDisplay implements ClientModInitializer {
             com.ctt.healthdisplay.client.ClientStageDetector.onDisconnect();
             // v8.3.0 · M7 · 清 mob 血量缓存，切服后下一局起 isFresh=false 从头累积
             ClientMobHealthCache.reset();
+            // v8.4.0 · 清服务端属性 push / 全队四色心 cache。切到无 mod 服务端时确保
+            // ClientStatsPushCache.isFresh() 立刻 false → 客户端 auto refresh 立即接管
+            // /trigger ViewStats（避免空白期）；ClientTeamHeartsCache 同步清空，让队友
+            // 头顶条立刻退回 v8.3.x 单色多槽。
+            ClientStatsPushCache.reset();
+            ClientTeamHeartsCache.reset();
         });
 
         // v8.1.0 · CDP 持久化生命周期钩子：
@@ -345,7 +390,14 @@ public class CttHealthDisplay implements ClientModInitializer {
                 renderDmgSessionActionbar(client);
             }
             ModConfig config = ModConfig.INSTANCE;
-            if (config.autoRefreshStats
+            // v8.4.0 · 服务端属性 push 接管的快路径：fresh 期间完全跳过本节，
+            // 不发 /trigger ViewStats，也不累 autoStatsTimer，保证切服 fresh → stale 时
+            // 不会因为残留 autoStatsTimer 立刻发命令。prevAllHearts 仍要刷新避免下次
+            // fresh 失效时把"自从 fresh 起的全部 HP 变化"误判为单 tick 大跳。
+            if (ClientStatsPushCache.isFresh()) {
+                prevAllHearts = healthData.allHearts;
+                autoStatsTimer = 0;
+            } else if (config.autoRefreshStats
                     && !statsData.isCapturing()
                     && client.player != null && client.getNetworkHandler() != null) {
 

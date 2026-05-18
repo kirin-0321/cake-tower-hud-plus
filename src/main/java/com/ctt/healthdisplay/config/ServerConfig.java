@@ -44,7 +44,7 @@ public class ServerConfig {
      * （疑似 Prop / NPC 标签命中），v6.7.4 改默认 false——但已经持久化 JSON 的 true 值
      * 不会因仅改字段默认而被覆盖，必须靠版本号迁移强制覆写。
      */
-    public static final int CURRENT_CONFIG_VERSION = 5;
+    public static final int CURRENT_CONFIG_VERSION = 6;
 
     public static ServerConfig INSTANCE = new ServerConfig();
 
@@ -95,6 +95,48 @@ public class ServerConfig {
      * 为 <b>false</b> 时回退 {@code DamageShower} 粒子线（旧路径）。
      */
     public boolean useRedHeartsTally = true;
+
+    // ===== v8.4.0 · 服务端属性 push（旁路 /trigger ViewStats） =====
+    /**
+     * 是否让服务端主动构造每个玩家的属性面板（{@link com.ctt.healthdisplay.server.ViewStatsBuilder}）
+     * 并通过 {@link com.ctt.healthdisplay.network.PlayerStatsPayload} 直接推给该玩家客户端，
+     * 让客户端完全跳过自发 {@code /trigger ViewStats} 命令。默认 {@code true}。
+     *
+     * <p>关掉的场景：服务端管理员调试，或想看客户端走老 chat 解析路径定位 bug。
+     * 关掉后客户端会自动 fallback 到 v8.3.x 的命令触发路径（{@code autoRefreshIntervalSeconds}
+     * 秒级别再次发命令），与客户端独装一致。
+     */
+    public boolean serverPushStatsEnabled = true;
+
+    /**
+     * 服务端属性 push 的 tick 间隔。默认 20 tick = 1 Hz。
+     *
+     * <p>本字段 vs 客户端 {@code autoRefreshIntervalSeconds} 完全独立：
+     * 服务端走的是直接读 scoreboard 拼 Text，绕过 datapack 的
+     * {@code function view_stats.mcfunction}（后者每次执行 0.5–1.5 ms / 玩家），
+     * 哪怕 1 tick (50 ms) 也不影响 TPS。{@link com.ctt.healthdisplay.server.ViewStatsBuilder#build}
+     * 单次 ~25 µs / 玩家，4 人队 5 Hz 仅占 0.5 ms/s 服务端 CPU。
+     * <p>合理区间：5–60 tick (4 Hz–0.33 Hz)。低于 5 tick 没意义 —— 玩家面板感知不到 200 ms 与 50 ms 差异。
+     */
+    public int serverPushStatsIntervalTicks = 20;
+
+    /**
+     * 是否广播全队四色心摘要（{@link com.ctt.healthdisplay.server.TeamHeartsBroadcaster}）。
+     * 默认 {@code true} —— 客户端开 {@code showTeammateLayeredHearts} 后，队友头顶 / 侧栏 HUD
+     * 直接显示与玩家自己主血条一致的 4 色心叠加。关掉后队友血条退回 v8.3.x 单色多槽。
+     */
+    public boolean serverPushTeamHeartsEnabled = true;
+
+    /**
+     * 全队四色心广播的 tick 间隔。默认 4 tick = 5 Hz。
+     *
+     * <p>5 Hz 让队友 hp / 心数变化几乎实时（vs vanilla bossbar 同步频率），
+     * 但远低于客户端 100 ms 帧间隔，不会造成视觉卡顿。
+     * 单次广播 ~1.2 µs/s 服务端 CPU，4 人队 5 Hz 网络 ~2.4 KB/s 总流量，
+     * 差量吞噬下稳态零流量。
+     * <p>合理区间：2–20 tick (10 Hz–1 Hz)。
+     */
+    public int serverPushTeamHeartsIntervalTicks = 4;
 
     // ===== 异常伤害过滤器（v6.7.0+，统一总闸） =====
     /**
@@ -508,6 +550,20 @@ public class ServerConfig {
             //   不需要专门覆写。本分支仅作为版本号升级占位，让 migrate 链能跨版本递推。
             changed = true;
         }
+        if (configVersion < 6) {
+            // v8.4.0 · 服务端属性 push + 全队四色心广播引入。
+            //   serverPushStatsEnabled / serverPushStatsIntervalTicks /
+            //   serverPushTeamHeartsEnabled / serverPushTeamHeartsIntervalTicks
+            //   都是新字段，旧 JSON 反序列化为 false / 0。
+            //   对老用户而言"升级 = 默认启用"是期望行为（性能正面提升 + 队友 4 色心新功能），
+            //   所以这里强制覆写一次到推荐默认值；用户改过的非默认值会被覆盖但属可接受
+            //   ——本字段是 v8.4.0 才存在，"用户改过的旧值"逻辑上不存在。
+            serverPushStatsEnabled = true;
+            if (serverPushStatsIntervalTicks <= 0) serverPushStatsIntervalTicks = 20;
+            serverPushTeamHeartsEnabled = true;
+            if (serverPushTeamHeartsIntervalTicks <= 0) serverPushTeamHeartsIntervalTicks = 4;
+            changed = true;
+        }
         // 任何迁移分支跑完后把版本号顶到当前。
         if (configVersion < CURRENT_CONFIG_VERSION) {
             configVersion = CURRENT_CONFIG_VERSION;
@@ -644,5 +700,9 @@ public class ServerConfig {
         if (p95OutlierMultiplier < 1) p95OutlierMultiplier = 3;
         if (dpsActiveMultiplier < 0) dpsActiveMultiplier = 0;
         if (outlierAbsoluteFloor < 0) outlierAbsoluteFloor = 0;
+
+        // ===== v8.4.0 · 服务端 push 字段兜底 =====
+        if (serverPushStatsIntervalTicks <= 0) serverPushStatsIntervalTicks = 20;
+        if (serverPushTeamHeartsIntervalTicks <= 0) serverPushTeamHeartsIntervalTicks = 4;
     }
 }

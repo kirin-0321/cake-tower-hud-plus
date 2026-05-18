@@ -43,6 +43,15 @@ public class TeammateWorldRenderer {
         0xAA44DD  // 6x+ purple
     };
 
+    // v8.4.0 · 队友头顶 4 色心层颜色（与 HealthBarRenderer.COLOR_*_HEART 同值，
+    // 但这里 drawBarQuad 用 RGB 24-bit + 独立 alpha 参数，所以剥掉 alpha）。
+    // 渲染顺序：Red (z=0.022) → Soul (0.023) → Black (0.024) → Blue (0.025)，
+    // 与主血条 drawLayeredBar 同款叠加：后画的层在像素上覆盖前画层。
+    private static final int COLOR_RED_HEART_3D   = 0xE84040;
+    private static final int COLOR_SOUL_HEART_3D  = 0xDDCC22;
+    private static final int COLOR_BLACK_HEART_3D = 0x550088;
+    private static final int COLOR_BLUE_HEART_3D  = 0x4488EE;
+
     public static void renderHealthBar(Entity entity, double cameraX, double cameraY, double cameraZ,
                                        float tickDelta, MatrixStack matrices,
                                        VertexConsumerProvider vertexConsumers,
@@ -91,7 +100,19 @@ public class TeammateWorldRenderer {
         bg.vertex(matrix, halfW + 1, barTop + barH + 1, 0.01f).color(0, 0, 0, 80).light(light);
         bg.vertex(matrix, halfW + 1, barTop - 1, 0.01f).color(0, 0, 0, 80).light(light);
 
-        if (data.hp > 0 && data.maxHP > 0) {
+        // v8.4.0 · 服务端推过四色心 + 客户端开关 → 走 4 层叠加（与玩家自己主血条一致）；
+        // 否则旧 OVERFLOW_COLORS 多槽溢出条。
+        if (ModConfig.INSTANCE.showTeammateLayeredHearts && data.hasLayeredHearts()
+                && data.maxHP > 0) {
+            drawLayeredQuad(vertexConsumers, matrix, halfW, barW, barTop, barH, light,
+                    data.hp,         data.maxHP, COLOR_RED_HEART_3D,   0.022f);
+            drawLayeredQuad(vertexConsumers, matrix, halfW, barW, barTop, barH, light,
+                    data.soulHearts, data.maxHP, COLOR_SOUL_HEART_3D,  0.023f);
+            drawLayeredQuad(vertexConsumers, matrix, halfW, barW, barTop, barH, light,
+                    data.blackHearts,data.maxHP, COLOR_BLACK_HEART_3D, 0.024f);
+            drawLayeredQuad(vertexConsumers, matrix, halfW, barW, barTop, barH, light,
+                    data.blueHearts, data.maxHP, COLOR_BLUE_HEART_3D,  0.025f);
+        } else if (data.hp > 0 && data.maxHP > 0) {
             int topIdx = (data.hp - 1) / data.maxHP;
             int hpInTop = data.hp - topIdx * data.maxHP;
             float topFill = Math.min(barW, (float) hpInTop / data.maxHP * barW);
@@ -247,6 +268,21 @@ public class TeammateWorldRenderer {
         matrices.pop();
 
         matrices.pop();
+    }
+
+    /**
+     * v8.4.0 · 队友 4 色心叠加层之一。{@code val/maxHP} clamp 到 [0, 100]%，
+     * 填充宽度 = clamp(barW) 像素；val ≤ 0 直接 skip 不调 drawBarQuad，
+     * 与 {@link HealthBarRenderer#drawLayeredBar} 同款"每层独立"语义。
+     */
+    private static void drawLayeredQuad(VertexConsumerProvider vcp, Matrix4f matrix,
+                                        float halfW, float barW, float barTop, float barH,
+                                        int light, int val, int maxHP, int color, float zOff) {
+        if (val <= 0 || maxHP <= 0) return;
+        float pct = Math.min(1f, (float) val / maxHP);
+        float fillW = barW * pct;
+        if (fillW <= 0) return;
+        drawBarQuad(vcp, matrix, -halfW, -halfW + fillW, barTop, barH, color, 220, light, zOff);
     }
 
     private static void drawBarQuad(VertexConsumerProvider vcp, Matrix4f matrix,

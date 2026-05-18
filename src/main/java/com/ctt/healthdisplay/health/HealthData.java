@@ -358,7 +358,28 @@ public class HealthData {
             // 但主 HUD 左上角的 4 层大血条和队友面板的小条代表的数据不同（前者多层心叠，后者只有 HP 百分比），
             // 让自己也出现能一眼看到自己在队伍排名的 HP / Lives 情况，和真队友形成对比。
             int mateLives = (scoreboard != null) ? readScoreByName(scoreboard, name, "Lives") : 0;
-            teammates.add(new TeammateData(name, hp, maxHp, mateLives, name.equals(selfName)));
+
+            // v8.4.0 · 服务端 TeamHeartsBroadcaster 命中时优先用其四色心 + maxHp + lives
+            // 数据，让队友头顶血条也能走 4 色心叠加（与玩家自己主血条一致）。
+            // cache 失鲜 / 服务端没装 mod / 玩家不在 team hearts entries 时退回 vanilla 路径：
+            //   - hp / maxHp 仍走 bossbar 正则（队伍 bossbar 是 vanilla 行为，无 mod 也有）
+            //   - lives 仍走客户端本地 scoreboard
+            //   - 四色心字段全 0，渲染端检测 hasLayeredHearts() == false → 老 OVERFLOW_COLORS 单色条
+            int soul = 0, black = 0, blue = 0;
+            com.ctt.healthdisplay.network.TeamHeartsPayload.Entry entry =
+                    com.ctt.healthdisplay.client.ClientTeamHeartsCache.lookup(name);
+            if (entry != null) {
+                soul  = entry.soulHearts();
+                black = entry.blackHearts();
+                blue  = entry.blueHearts();
+                // 服务端有更权威的 maxHp / lives —— 但 hp 仍以 bossbar 解析为准（动画即时性更高，
+                // 服务端 5 Hz 推送有 200 ms 抖动；bossbar 是 vanilla 实时同步）。
+                if (entry.maxHp() > 0) maxHp = entry.maxHp();
+                if (entry.lives() > 0) mateLives = entry.lives();
+            }
+            teammates.add(new TeammateData(name, hp, maxHp, mateLives,
+                    name.equals(selfName), entry != null ? entry.redHearts() : 0,
+                    soul, black, blue));
         }
     }
 
@@ -457,17 +478,49 @@ public class HealthData {
         // 3D 头顶血条那边通过 `player == MinecraftClient.getInstance().player` 过滤自己，不受此字段影响。
         public final boolean isSelf;
 
+        // v8.4.0 · 服务端 TeamHeartsBroadcaster 推送时填入；服务端没装 mod 时全为 0。
+        // {@link #hasLayeredHearts()} 用 (soul|black|blue) > 0 判定是否走 4 色心叠加渲染，
+        // 这样无 mod 服务端 / 进入但未参与本局的玩家 (全 0) 自动落到老的 OVERFLOW_COLORS 路径。
+        public final int redHeartsServer;
+        public final int soulHearts;
+        public final int blackHearts;
+        public final int blueHearts;
+
+        /** v8.3.x 兼容构造（无服务端四色心数据）。 */
         public TeammateData(String name, int hp, int maxHP, int lives, boolean isSelf) {
+            this(name, hp, maxHP, lives, isSelf, 0, 0, 0, 0);
+        }
+
+        /** v8.4.0 · 含服务端四色心数据的完整构造。 */
+        public TeammateData(String name, int hp, int maxHP, int lives, boolean isSelf,
+                            int redHeartsServer, int soulHearts, int blackHearts, int blueHearts) {
             this.name = name;
             this.hp = hp;
             this.maxHP = maxHP;
             this.lives = lives;
             this.isSelf = isSelf;
+            this.redHeartsServer = redHeartsServer;
+            this.soulHearts = soulHearts;
+            this.blackHearts = blackHearts;
+            this.blueHearts = blueHearts;
         }
 
         public int getPercent() {
             if (maxHP <= 0) return 100;
             return Math.round((float) hp * 100 / maxHP);
+        }
+
+        /**
+         * v8.4.0 · 是否具备四色心叠加渲染所需数据。
+         *
+         * <p>判定条件 {@code (soul|black|blue) > 0}：服务端推过且至少一种非红心 ≥ 1
+         * 才有意义切到 layered。如果所有非红心都是 0，layered 与单色条视觉等价，
+         * 没必要切（少一层 fill 调用）。{@code redHeartsServer} 单独 &gt; 0 也不
+         * 触发——队友 hp 来自 bossbar 比 redHeartsServer 更实时，红心数自身不必走
+         * 服务端字段。
+         */
+        public boolean hasLayeredHearts() {
+            return (soulHearts | blackHearts | blueHearts) > 0;
         }
     }
 

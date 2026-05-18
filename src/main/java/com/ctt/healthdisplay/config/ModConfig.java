@@ -37,6 +37,19 @@ public class ModConfig {
     public boolean hideTeamBar = true;
     public boolean hideMobBars = false;
 
+    /**
+     * v8.4.0 · 队友头顶 / 侧栏 HUD 血条是否使用与玩家自己一致的 4 色心叠加（Red/Soul/Black/Blue）。
+     *
+     * <p>默认 {@code true} —— 视觉直观区分队友抗性堆叠 (Soul/Black/Blue 多寡)，
+     * 与主血条 {@link com.ctt.healthdisplay.hud.HealthBarRenderer#drawLayeredBar} 风格一致。
+     * 依赖服务端 {@link com.ctt.healthdisplay.server.TeamHeartsBroadcaster} 推过四色心数据
+     * （{@link com.ctt.healthdisplay.client.ClientTeamHeartsCache#isFresh} fresh 时生效），
+     * 否则自动 fallback 到 v8.3.x 的 OVERFLOW_COLORS 多槽溢出条。
+     * <p>设为 {@code false} 强制使用 v8.3.x 老外观（{@code 1× 红 / 2× 橙 / 3× 黄 ...} 多槽），
+     * 适合追求"老风格"或服务端推送有故障时手动切回。
+     */
+    public boolean showTeammateLayeredHearts = true;
+
     // ===== v6.3.0 · 伤害分配面板（测试版）=====
     /**
      * 是否在 HUD 上持续渲染面板（非交互模式的只读展示）。关闭后仅按 L 弹 Screen 时可见。

@@ -227,7 +227,13 @@ public class HealthBarRenderer {
 
             // Row 2: Health bar with HP text inside
             int barY = y + HEAD_SIZE + 1;
-            drawTeammateBar(context, x, barY, MATE_BAR_WIDTH, MATE_BAR_HEIGHT, mate.hp, mate.maxHP);
+            // v8.4.0 · 服务端 TeamHeartsBroadcaster 推过四色心 + 客户端开关打开 → 走 layered，
+            // 与玩家自己主血条 drawLayeredBar 视觉一致；否则旧 OVERFLOW_COLORS 单色多槽。
+            if (ModConfig.INSTANCE.showTeammateLayeredHearts && mate.hasLayeredHearts()) {
+                drawTeammateBarLayered(context, x, barY, MATE_BAR_WIDTH, MATE_BAR_HEIGHT, mate);
+            } else {
+                drawTeammateBar(context, x, barY, MATE_BAR_WIDTH, MATE_BAR_HEIGHT, mate.hp, mate.maxHP);
+            }
 
             String hpStr = mate.maxHP > 0 ? mate.hp + "/" + mate.maxHP : String.valueOf(mate.hp);
             int hpW = textRenderer.getWidth(hpStr);
@@ -436,6 +442,42 @@ public class HealthBarRenderer {
 
         int topColorIdx = Math.min(topIdx, OVERFLOW_COLORS.length - 1);
         context.fill(x, y, x + topFillPx, y + h, OVERFLOW_COLORS[topColorIdx]);
+    }
+
+    /**
+     * v8.4.0 · 队友 4 色心叠加版血条（与玩家自己主血条 {@link #drawLayeredBar} 视觉一致）。
+     *
+     * <p>仅在 {@link com.ctt.healthdisplay.client.ClientTeamHeartsCache} fresh 且服务端
+     * 推过该玩家的 soul/black/blue 之一非零时调用。无 mod 服务端 / 队友未参与本局时
+     * {@code mate.hasLayeredHearts()} 返回 false，渲染入口会退回 {@link #drawTeammateBar}
+     * 老路径。
+     *
+     * <p>层级顺序 = {@code drawLayeredBar} 同款 = datapack {@code view_stats.mcfunction} 同款：
+     * Red → Soul → Black → Blue。每层独立 {@code min(100%, value/maxHP)} 填充。
+     */
+    private static void drawTeammateBarLayered(DrawContext context, int x, int y, int w, int h,
+                                               HealthData.TeammateData mate) {
+        context.fill(x - 1, y - 1, x + w + 1, y + h + 1, BAR_BORDER);
+        context.fill(x, y, x + w, y + h, EMPTY_FILL);
+
+        if (mate.maxHP <= 0) return;
+
+        // mate.hp 来自 bossbar（vanilla 实时），等价于 RedHearts 当前层 —— 不用 mate.redHeartsServer。
+        // mate.redHeartsServer 仅在 hasLayeredHearts() 判定 / 未来扩展时用得到。
+        drawBarLayer(context, x, y, w, h, Math.min(100f, (float) mate.hp          / mate.maxHP * 100f), COLOR_RED_HEART);
+        drawBarLayer(context, x, y, w, h, Math.min(100f, (float) mate.soulHearts  / mate.maxHP * 100f), COLOR_SOUL_HEART);
+        drawBarLayer(context, x, y, w, h, Math.min(100f, (float) mate.blackHearts / mate.maxHP * 100f), COLOR_BLACK_HEART);
+        drawBarLayer(context, x, y, w, h, Math.min(100f, (float) mate.blueHearts  / mate.maxHP * 100f), COLOR_BLUE_HEART);
+    }
+
+    /** v8.4.0 · 通用尺寸版本（替代旧 {@link #drawBarLayer(DrawContext, int, int, float, int)}
+     *  的硬编码 BAR_WIDTH/BAR_HEIGHT 写死），让 layered 渲染可重用于队友条任意宽高。 */
+    private static void drawBarLayer(DrawContext context, int x, int y, int w, int h, float pct, int color) {
+        if (pct <= 0) return;
+        int fillPx = Math.max(0, Math.min(w, Math.round(pct / 100f * w)));
+        if (fillPx > 0) {
+            context.fill(x, y, x + fillPx, y + h, color);
+        }
     }
 
     private enum BarKind { HEALTH, MANA, BLOOD }

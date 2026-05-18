@@ -1,8 +1,10 @@
 package com.ctt.healthdisplay.server;
 
 import com.ctt.healthdisplay.network.MobHealthPayload;
+import com.ctt.healthdisplay.network.PlayerStatsPayload;
 import com.ctt.healthdisplay.network.StagePayload;
 import com.ctt.healthdisplay.network.StatsSnapshotPayload;
+import com.ctt.healthdisplay.network.TeamHeartsPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -41,7 +43,7 @@ public class CttStatsServer implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        LOGGER.info("[CTT Stats v6.2.0] server entrypoint loaded. Attribution stack: "
+        LOGGER.info("[CTT Stats v8.4.0] server entrypoint loaded. Attribution stack: "
                 + "L1 weapon+fire | L2 stat tick | L3/L4 marker 3m/40m | L5 stat window | "
                 + "L6 fire window | L7 last-hitter carry | L8 summon fallback | L9 none.");
 
@@ -51,12 +53,16 @@ public class CttStatsServer implements ModInitializer {
         //   - 专用服务器读自己的 server config
         //   - 集成单机 ConfigScreen 也能即时读写同一份 INSTANCE
         com.ctt.healthdisplay.config.ServerConfig.load();
-        LOGGER.info("[CTT Stats] server config loaded (broadcastDamage={}, broadcastKills={}, broadcastTaken={}, broadcastStageReport={}, useRedHearts={})",
+        LOGGER.info("[CTT Stats] server config loaded (broadcastDamage={}, broadcastKills={}, broadcastTaken={}, broadcastStageReport={}, useRedHearts={}, pushStats={}@{}t, pushTeamHearts={}@{}t)",
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastDamageInChat,
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastKillsInChat,
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastTakenInChat,
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastStageReportInChat,
-                com.ctt.healthdisplay.config.ServerConfig.INSTANCE.useRedHeartsTally);
+                com.ctt.healthdisplay.config.ServerConfig.INSTANCE.useRedHeartsTally,
+                com.ctt.healthdisplay.config.ServerConfig.INSTANCE.serverPushStatsEnabled,
+                com.ctt.healthdisplay.config.ServerConfig.INSTANCE.serverPushStatsIntervalTicks,
+                com.ctt.healthdisplay.config.ServerConfig.INSTANCE.serverPushTeamHeartsEnabled,
+                com.ctt.healthdisplay.config.ServerConfig.INSTANCE.serverPushTeamHeartsIntervalTicks);
 
         // v8.x · 注册 /ctthd broadcast ... 运行时开关命令。requires=true，
         // 任意权限玩家都能用，方便服务器现场临时开广播诊断。
@@ -90,6 +96,16 @@ public class CttStatsServer implements ModInitializer {
         // 老 bossbar 解析路径。详见 MobHealthBroadcaster。
         PayloadTypeRegistry.playS2C().register(MobHealthPayload.ID, MobHealthPayload.CODEC);
 
+        // v8.4.0 · 服务端属性 push + 全队四色心 payload 注册。
+        //   PlayerStatsPayload (1 Hz)：服务端直接拼属性面板 Text 列表，客户端绕过
+        //     /trigger ViewStats 命令路径（避开 datapack 0.5-1.5 ms/玩家 + 反作弊 rate limit）。
+        //   TeamHeartsPayload (5 Hz)：全队 RedHearts/SoulHearts/BlackHearts/BlueHearts/MaxHP/Lives
+        //     摘要，驱动队友头顶血条与玩家自己一致的 4 色心叠加渲染。
+        // 客户端 CttHealthDisplay.onInitializeClient 里有对称的 try-catch 注册，集成服务器
+        // 单 JVM 下任意一端先注册成功，另一端的重复注册抛 IAE 被吞掉。
+        PayloadTypeRegistry.playS2C().register(PlayerStatsPayload.ID, PlayerStatsPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(TeamHeartsPayload.ID,  TeamHeartsPayload.CODEC);
+
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             currentServer = server;
             LOGGER.info("[CTT Stats] server reference cached.");
@@ -122,6 +138,10 @@ public class CttStatsServer implements ModInitializer {
             // v6.6.5 · M6 · 玩家加入立即推一次 stats 快照（首屏 baseline，
             // 不用等下一个 1Hz 心跳；HUD / K 表起步即有数据）。
             StatsSnapshotBroadcaster.pushTo(handler.getPlayer());
+            // v8.4.0 · 首屏立即推一次属性面板 + 当前全队四色心 snapshot，
+            // 避免新加入的玩家等 20 / 4 tick 才看到 HUD 数据。
+            PlayerStatsPushBroadcaster.onPlayerJoin(handler.getPlayer());
+            TeamHeartsBroadcaster.onPlayerJoin(handler.getPlayer());
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             java.util.UUID uuid = handler.getPlayer().getUuid();
@@ -131,6 +151,10 @@ public class CttStatsServer implements ModInitializer {
             // v8.3.0 · M7 · 清 MobHealthBroadcaster 的 LAST_SENT，避免下次同 UUID 重连
             // 后被差量逻辑误判成"和上次一样"而首帧不推送。
             MobHealthBroadcaster.onPlayerDisconnect(uuid);
+            // v8.4.0 · 清 PlayerStatsPushBroadcaster 的 LAST_SENT，避免下次同 UUID 重连
+            // 后被差量逻辑误判成"和上次一样"而首帧不推送。TeamHeartsBroadcaster 是全局
+            // snapshot 不需要 per-player 清理。
+            PlayerStatsPushBroadcaster.onPlayerDisconnect(uuid);
             // v8.x · 异常过滤器 G7b · per-(player, weapon) P95 训练样本 + per-weapon DPS 桶
             // 玩家离线后立即释放，避免长期累积内存
             com.ctt.healthdisplay.server.filter.PerPlayerWeaponP95Registry.evict(uuid);
@@ -158,6 +182,14 @@ public class CttStatsServer implements ModInitializer {
         // v8.3.0 · M7 · 4 Hz 推送 per-player 怪物血量表。地图无 CTT scoreboard 时内部
         // 直接 early return，非 CTT 环境零开销。详见 MobHealthBroadcaster。
         ServerTickEvents.END_SERVER_TICK.register(MobHealthBroadcaster::tickPushIfDue);
+
+        // v8.4.0 · 服务端属性 push（默认 1 Hz）：替代客户端的 /trigger ViewStats 路径。
+        // 非 CTT 地图（无 RedHearts objective）整轮跳过，纯 vanilla 环境零开销。
+        ServerTickEvents.END_SERVER_TICK.register(PlayerStatsPushBroadcaster::tickPushIfDue);
+
+        // v8.4.0 · 全队四色心摘要广播（默认 5 Hz）：驱动队友 4 色心叠加渲染。
+        // 同样非 CTT 地图整轮跳过。
+        ServerTickEvents.END_SERVER_TICK.register(TeamHeartsBroadcaster::tickPushIfDue);
 
         // v6.6.1 · M2 · NBT 持久化节流写：每 60s 检查一次是否到点。
         ServerTickEvents.END_SERVER_TICK.register(StatsPersistenceManager::onTickEnd);

@@ -154,4 +154,63 @@ public class StatsData {
     public int getSoulHearts() { return soulHearts; }
     public int getBlackHearts() { return blackHearts; }
     public int getBlueHearts() { return blueHearts; }
+
+    /**
+     * v8.4.0 · 服务端 {@code PlayerStatsPushBroadcaster} 推送入口。
+     *
+     * <p>把服务端构造好的 {@link com.ctt.healthdisplay.network.PlayerStatsPayload} 字段直接
+     * 灌入本地 fields，<b>完全旁路</b>聊天消息 chat capture 路径
+     * （{@link #processMessage}）。客户端只要装了本 mod，服务端也装了本 mod，
+     * 主 HUD 属性面板 + 主血条四色心叠加完全由本入口驱动，
+     * {@code /trigger ViewStats} 命令不再被客户端自动触发。
+     *
+     * <h2>语义对齐</h2>
+     * <ul>
+     *   <li>{@code lines.isEmpty()} = 服务端读出"非 CTT 地图 / 玩家未加入世界"
+     *       → 设 {@code hasData=false}，HUD 显示"暂无属性数据"hint
+     *       （与 chat 解析时的 isGameNotStarted 语义一致）。</li>
+     *   <li>{@code lines.nonEmpty()} → 设 {@code hasData=true}、{@code everReceived=true}、
+     *       {@code hasHeartData} = 四心之中任一 ≥1、{@code gameNotStarted=false}。</li>
+     *   <li>{@code lastCaptureCompleteTimeMs} = 当前挂钟，让"癫狂 fallback"
+     *       （{@link com.ctt.healthdisplay.health.HealthData#hasStatsFallback}）
+     *       继续工作 —— 服务端推 = 一次成功的 ViewStats capture。</li>
+     *   <li>{@code capturing} 强制清成 false：服务端路径不存在"等下一行"的状态。</li>
+     * </ul>
+     *
+     * <h2>线程</h2>
+     * <p>仅在客户端线程调用（receiver 已用 {@code MinecraftClient.execute} 切线程）。
+     */
+    public void applyServerSnapshot(int red, int soul, int black, int blue,
+                                    java.util.List<Text> serverLines) {
+        // 服务端 builder 返回 lines.isEmpty() 表示"非 CTT 地图 / 玩家未在世界" —— 等同于
+        // chat 路径的 gameNotStarted。和 chat 一致地把心数清零，避免残留旧值。
+        if (serverLines == null || serverLines.isEmpty()) {
+            lines.clear();
+            hasData = false;
+            capturing = false;
+            gameNotStarted = true;
+            redHearts = 0;
+            soulHearts = 0;
+            blackHearts = 0;
+            blueHearts = 0;
+            hasHeartData = false;
+            lastCaptureCompleteTimeMs = 0;
+            return;
+        }
+
+        lines.clear();
+        for (Text t : serverLines) {
+            if (t != null) lines.add(t);
+        }
+        redHearts = red;
+        soulHearts = soul;
+        blackHearts = black;
+        blueHearts = blue;
+        hasHeartData = (red > 0 || soul > 0 || black > 0 || blue > 0);
+        hasData = true;
+        everReceived = true;
+        capturing = false;
+        gameNotStarted = false;
+        lastCaptureCompleteTimeMs = System.currentTimeMillis();
+    }
 }
