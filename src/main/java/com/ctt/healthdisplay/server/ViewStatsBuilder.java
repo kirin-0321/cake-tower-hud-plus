@@ -31,14 +31,16 @@ import java.util.List;
  * </ul>
  *
  * <h2>已还原 vs 跳过</h2>
- * <p><b>已还原</b>：标题 + Hover 提示 + 4 色心 + CrackedHearts/PinkHearts + NegMaxHealth +
- * {@link ViewStatsRegistry#ENTRIES} 全部 ~32 条普通属性 + TowersRegen derived +
- * SpeedAmplifier + SpeedRaw 条件行 + Size / Gravity 双向 icon + CelestialKarma + #Skulls。
+ * <p><b>已还原</b>（v8.4.3 起完整覆盖 HUD 用户可见区）：4 色心 + CrackedHearts/PinkHearts +
+ * NegMaxHealth + {@link ViewStatsRegistry#ENTRIES} 全部 ~33 条普通属性（含 v8.4.3 新增的
+ * TowersRegen derived）+ SpeedAmplifier + SpeedRaw 条件行 + Size / Gravity 双向 icon +
+ * CelestialKarma + {@link ViewStatsRegistry#STATUS_EFFECTS}（v8.4.3 新增的 30+ 个
+ * tag-based 状态效果，如 Berserk/Burnt/Dizzy/Cursed/...，用
+ * {@link Text#translatable(String)} 让客户端汉化包翻译为"癫狂/燃烧/眩晕/..."）+ #Skulls。
  *
- * <p><b>跳过</b>（不影响主 HUD 渲染，仅 chat 面板有差异）：状态效果 Tag 行（{@code Burnt}
- * 等 30 多个、{@code MysteriousVampireChallenge}、{@code GingerbreadProtectorComplete}）、
- * "Grass Toucher Check" 行、"Game time" 时间行。客户端 {@code StatsRenderer} 不渲染
- * status effects 段（v8.3.x 起 datapack chat 也只是当装饰），这些跳过完全不影响 HUD 行为。
+ * <p><b>跳过</b>（玩家几乎不关心，且 HUD 渲染无意义）：datapack 顶部的
+ * {@code "Your Stats:"} 标题 + {@code "Hover over an icon..."} 提示（HUD 不是 chat，没 hover）、
+ * "Grass Toucher Check" 行、"Game time" 时间行（玩家自己看左下角时间足矣）。
  */
 public final class ViewStatsBuilder {
 
@@ -177,7 +179,21 @@ public final class ViewStatsBuilder {
             }
         }
 
-        // 11. #Skulls CTT（fake player score）
+        // 11. v8.4.3 · 状态效果（tag-based）。datapack 在 DarkKarma 之后、Skulls 之前用
+        //     `tellraw @s[tag=Xxx] {"translate":"Yyy","color":"#zzz",...}` 输出每个状态行。
+        //     这里走 STATUS_EFFECTS 表 + Text.translatable，让客户端汉化资源包翻译
+        //     （如 "Berserk" → "癫狂"）。getCommandTags() 返回 Set，contains O(1)，
+        //     30 次查询的成本相对差量缓存可忽略。
+        java.util.Set<String> tags = player.getCommandTags();
+        if (!tags.isEmpty()) {
+            for (ViewStatsRegistry.StatusEffectEntry st : ViewStatsRegistry.STATUS_EFFECTS) {
+                if (tags.contains(st.tag())) {
+                    lines.add(buildStatusEffectLine(st.translateKey(), st.color()));
+                }
+            }
+        }
+
+        // 12. #Skulls CTT（fake player score）
         int skulls = ScoreboardReader.readOrZero(sb, "CTT", ScoreHolder.fromName("#Skulls"));
         if (skulls <= -1) {
             lines.add(buildIconLine(skulls, "\u2620", GRAY, false));
@@ -221,5 +237,18 @@ public final class ViewStatsBuilder {
         MutableText line = Text.literal(String.valueOf(score)).setStyle(style);
         line.append(Text.literal("% Speed Amplifier").setStyle(style));
         return line;
+    }
+
+    /**
+     * v8.4.3 · 状态效果行：纯 {@link Text#translatable(String)} + 颜色，无数值无图标。
+     *
+     * <p>对应 datapack：{@code {"translate":"Berserk","color":"dark_red","hoverEvent":{...}}}。
+     * 用 translatable 而非 literal 是为了让客户端汉化资源包能把 {@code "Berserk"} 翻译成
+     * {@code "癫狂"} ——  Cake Team Towers 资源包内 lang 文件已经定义了所有 status effect
+     * 的英文 key → 多语言翻译。在没有翻译时 Minecraft fallback 到 key 原文，
+     * 与 datapack chat 路径行为一致。
+     */
+    private static MutableText buildStatusEffectLine(String translateKey, TextColor color) {
+        return Text.translatable(translateKey).setStyle(Style.EMPTY.withColor(color));
     }
 }

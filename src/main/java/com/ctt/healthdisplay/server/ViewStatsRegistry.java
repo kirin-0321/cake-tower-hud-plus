@@ -133,7 +133,10 @@ public final class ViewStatsRegistry {
             StatEntry.both("Defence",          ICON_SHIELD, BLUE,         GRAY),
             StatEntry.both("TrueArmor",        ICON_SHIELD, WHITE,        GRAY),
             StatEntry.both("Healing",          ICON_HEART,  LIGHT_PURPLE, GRAY),
-            // TowersRegen = Regen + Broccoli + BroccoliW（derived），builder 自己算
+            // v8.4.3 · TowersRegen = Regen + Broccoli + BroccoliW（仅 tag=CTT 玩家有效）。
+            //          这里必须列出条目，否则 ViewStatsBuilder 的 derived 特判分支永远是死代码。
+            //          derived 计算由 ViewStatsBuilder 在循环里识别 "TowersRegen" 替换 val。
+            StatEntry.both("TowersRegen",      ICON_REGEN,  GREEN,        GRAY),
             StatEntry.both("HealPercent",      ICON_HEAL_PERCENT, RED,    GRAY),
             StatEntry.both("ExtraHealing",     ICON_HEAL_PERCENT, LIGHT_PURPLE, GRAY),
             StatEntry.both("TrueFireArmor",    ICON_FIRE_ARMOR,   WHITE,        GRAY),
@@ -174,4 +177,76 @@ public final class ViewStatsRegistry {
 
     /** 心条专用 record（datapack 都只有正值分支）。 */
     public record HeartEntry(String objective, TextColor color) {}
+
+    /**
+     * v8.4.3 · 状态效果条目：基于玩家 {@link net.minecraft.entity.Entity#getCommandTags() tag}
+     * 而非 scoreboard，无数值，纯展示文本 + 颜色。
+     *
+     * <p>{@code translateKey} 与 datapack {@code tellraw} 里 {@code {"translate":"..."}} 完全一致 ——
+     * 我们用 {@link net.minecraft.text.Text#translatable(String)} 输出，让客户端汉化资源包
+     * 把 {@code "Berserk"} 翻译成 {@code "癫狂"} 等本地化文本（仍兼容 Cake Team Towers 资源包）。
+     *
+     * <p>datapack 同时给每行带了 {@code hoverEvent.contents}（详细描述），但
+     * HUD {@code StatsRenderer} 不画 hover（不是 chat），故服务端不传 hover 节省带宽 & 解析成本。
+     */
+    public record StatusEffectEntry(String tag, String translateKey, TextColor color) {}
+
+    // ---- 状态效果颜色快捷别名 ----
+    private static final TextColor STATUS_FIRED_UP_HEX     = TextColor.fromRgb(0xFBFF91);
+    private static final TextColor STATUS_FOOD_HEX         = TextColor.fromRgb(0x03FF24);
+    private static final TextColor STATUS_TRACK_MIMIC_HEX  = TextColor.fromRgb(0x5D1282);
+    private static final TextColor STATUS_LIGHT_JUDGE_HEX  = TextColor.fromRgb(0xD4FBFF);
+    private static final TextColor STATUS_BROKEN_SKULL_HEX = TextColor.fromRgb(0xFF1919);
+    private static final TextColor STATUS_BROKEN_ARM_HEX   = TextColor.fromRgb(0x7A0707);
+    private static final TextColor STATUS_BROKEN_FEMUR_HEX = TextColor.fromRgb(0x940000);
+    private static final TextColor STATUS_BULLET_HEX       = TextColor.fromRgb(0x401D1D);
+    private static final TextColor STATUS_STALKED_HEX      = TextColor.fromRgb(0xB8B8B8);
+    private static final TextColor STATUS_CURSED_HEX       = TextColor.fromRgb(0x520075);
+    private static final TextColor STATUS_DEPRESSED_HEX    = TextColor.fromRgb(0x616161);
+    private static final TextColor STATUS_AFRAID_HEX       = TextColor.fromRgb(0xFF0F0F);
+    private static final TextColor STATUS_AMNESIA_HEX      = TextColor.fromRgb(0x878787);
+    private static final TextColor STATUS_THIEF_HEX        = TextColor.fromRgb(0x25690D);
+    private static final TextColor STATUS_TRASH_MAN_HEX    = TextColor.fromRgb(0x00A305);
+    private static final TextColor STATUS_MESSY_SWORD_HEX  = TextColor.fromRgb(0x8000FF);
+    private static final TextColor STATUS_CONTRACT_HEX     = TextColor.fromRgb(0xFF1C1C);
+
+    /**
+     * 状态效果表（按 datapack 的 Positive → Neutral → Negative 三段顺序排列）。
+     *
+     * <p><b>注意拼写</b>：D07_Theif / Mysterous Vampire Challenge 在 datapack 中本就是拼错的，
+     * 翻译 key 必须 1:1 保留以匹配 Cake Team Towers 资源包的 lang 文件。
+     */
+    public static final List<StatusEffectEntry> STATUS_EFFECTS = List.of(
+            // ---- Positive ----
+            new StatusEffectEntry("AC06_User",                  "Fired Up",                      STATUS_FIRED_UP_HEX),
+            new StatusEffectEntry("FoodConnoisseur",            "Food Connoisseur",              STATUS_FOOD_HEX),
+            new StatusEffectEntry("MysteriousVampireChallenge", "Mysterous Vampire Challenge",   STATUS_FIRED_UP_HEX),
+            new StatusEffectEntry("GingerbreadProtectorComplete", "Ginger Bread Protector",      AQUA),
+            // ---- Neutral ----
+            new StatusEffectEntry("TrackingCursedMimics",       "Tracking Cursed Mimics",        STATUS_TRACK_MIMIC_HEX),
+            new StatusEffectEntry("LightArmorJudged",           "Light Armor Judged",            STATUS_LIGHT_JUDGE_HEX),
+            // ---- Negative ----
+            new StatusEffectEntry("CantGainAdvancements",       "Advancement Progression Disabled", RED),
+            new StatusEffectEntry("BrokenLeg",                  "Broken Leg",                    RED),
+            new StatusEffectEntry("BrokenRibcage",              "Broken Ribcage",                DARK_RED),
+            new StatusEffectEntry("BrokenSkull",                "Broken Skull",                  STATUS_BROKEN_SKULL_HEX),
+            new StatusEffectEntry("BrokenArm",                  "Broken Arm",                    STATUS_BROKEN_ARM_HEX),
+            new StatusEffectEntry("BrokenFemur",                "Broken Femur",                  STATUS_BROKEN_FEMUR_HEX),
+            new StatusEffectEntry("BulletWound",                "Bullet Wound",                  STATUS_BULLET_HEX),
+            new StatusEffectEntry("Burnt",                      "Burnt",                         GOLD),
+            new StatusEffectEntry("Dizzy",                      "Dizzy",                         GREEN),
+            new StatusEffectEntry("Stalked",                    "Stalked",                       STATUS_STALKED_HEX),
+            new StatusEffectEntry("Cursed",                     "Cursed",                        STATUS_CURSED_HEX),
+            new StatusEffectEntry("Depressed",                  "Depressed",                     STATUS_DEPRESSED_HEX),
+            new StatusEffectEntry("Afraid",                     "Afraid",                        STATUS_AFRAID_HEX),
+            new StatusEffectEntry("Amnesia",                    "Amnesia",                       STATUS_AMNESIA_HEX),
+            new StatusEffectEntry("D07_Theif",                  "Theif",                         STATUS_THIEF_HEX),
+            new StatusEffectEntry("S08_TrashManKOS",            "Wanted by the Garbage Collectors", STATUS_TRASH_MAN_HEX),
+            new StatusEffectEntry("MessyCodeCursed",            "Cursed Sword",                  STATUS_MESSY_SWORD_HEX),
+            new StatusEffectEntry("XingsCurse",                 "Xings Curse",                   RED),
+            new StatusEffectEntry("OpenWound",                  "Open Wound",                    STATUS_AFRAID_HEX),
+            new StatusEffectEntry("Berserk",                    "Berserk",                       DARK_RED),
+            new StatusEffectEntry("ContractHaunted",            "Contract Haunted",              STATUS_CONTRACT_HEX),
+            new StatusEffectEntry("JudgedHaunted",              "Observed",                      AQUA)
+    );
 }
