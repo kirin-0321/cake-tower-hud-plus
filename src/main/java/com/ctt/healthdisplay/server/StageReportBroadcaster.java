@@ -1,7 +1,9 @@
 package com.ctt.healthdisplay.server;
 
+import com.ctt.healthdisplay.config.ServerConfig;
 import com.ctt.healthdisplay.hud.StageLocation;
 import com.ctt.healthdisplay.hud.StageNameRegistry;
+import com.ctt.healthdisplay.server.command.BroadcastSubscribers;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.MutableText;
@@ -34,9 +36,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  * 对应用户决策：<i>"切换关卡时，包括 T1F1 到 T1F1 这种情况，还有 T1F1 到休息室"</i>。
  *
- * <h2>接收方</h2>
- * <p>{@link MinecraftServer#getPlayerManager()} 全员（用户决策 B2 · 全服在线玩家）。
- * 每个玩家收到的内容相同但"自己那行"会被高亮成金色——这步在 {@link #renderLines}
+ * <h2>接收方（v8.x · 订阅制）</h2>
+ * <p>默认<b>不广播</b>，避免新玩家被战斗后聊天栏的大段战报刷屏。两条路径开启：
+ * <ul>
+ *   <li><b>per-player 订阅</b>（推荐）：{@code /ctthd broadcast stage_report on}
+ *       或在配置界面勾选；订阅集合见
+ *       {@link BroadcastSubscribers.Channel#STAGE_REPORT}。订阅状态 in-memory，
+ *       下线 / 重启自动清空。</li>
+ *   <li><b>全局兜底</b>：编辑 {@code config/ctt-health-display-server.json} 把
+ *       {@link ServerConfig#broadcastStageReportInChat} 改为 {@code true}，重启后
+ *       走全服广播路径（与 v8.0.x 之前的旧行为一致，留给运维 / 测试用）。</li>
+ * </ul>
+ * <p>每个玩家收到的内容相同但"自己那行"会被高亮成金色——这步在 {@link #renderLines}
  * 里按 {@code viewerUuid} 定制，不需要客户端 mod 配合。
  *
  * <h2>样式（v6.6.7 · 双块布局）</h2>
@@ -104,6 +115,15 @@ public final class StageReportBroadcaster {
             return;
         }
 
+        // v8.x · 订阅制：默认不广播，避免新玩家被聊天栏战报刷屏。
+        // 全局兜底（broadcastStageReportInChat=true）或至少 1 名玩家订阅时才构建 + 发送。
+        boolean globalOn = ServerConfig.INSTANCE.broadcastStageReportInChat;
+        boolean anyone   = BroadcastSubscribers.hasAnySubscriber(BroadcastSubscribers.Channel.STAGE_REPORT);
+        if (!globalOn && !anyone) {
+            LOGGER.debug("[CTT report] no subscribers and global off; skip broadcast for {}", key);
+            return;
+        }
+
         // 收集行数据一次（与观看者无关），按玩家定制颜色时只重组 Text。
         StageReport report = buildReport(key);
         if (report == null || report.rows.isEmpty()) {
@@ -114,12 +134,19 @@ public final class StageReportBroadcaster {
         Set<UUID> online = onlineUuids(server);
         // v6.6.7 · 双块布局：关 header + n 玩家 + 全队·关 + 局 header + n 玩家 + 全队·局 = 2n + 4
         int linesPerViewer = report.rows.size() * 2 + 4;
+        int recipients = 0;
         for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+            // 全局开 = 给所有人发；否则只给订阅了 STAGE_REPORT 的玩家发。
+            if (!globalOn && !BroadcastSubscribers.isSubscribed(
+                    BroadcastSubscribers.Channel.STAGE_REPORT, p.getUuid())) {
+                continue;
+            }
             List<Text> lines = renderLines(report, p, online);
             for (Text line : lines) p.sendMessage(line, false);
+            recipients++;
         }
-        LOGGER.info("[CTT report] broadcasted stage {} ({} players, {} lines/viewer)",
-                key, report.rows.size(), linesPerViewer);
+        LOGGER.info("[CTT report] broadcasted stage {} ({} rows, {} lines/viewer, recipients={}, global={})",
+                key, report.rows.size(), linesPerViewer, recipients, globalOn);
     }
 
     // ------------------------------------------------------------------

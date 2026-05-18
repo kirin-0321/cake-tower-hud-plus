@@ -67,6 +67,17 @@ public class ConfigScreen extends Screen {
     private int optionScrollOffset = 0;
     private int optionContentHeight = 0;
 
+    /**
+     * v8.x · "属性刷新时间"按钮下方提示行的 y 坐标。在 {@link #init()} 里 refresh 按钮
+     * 排版完成后写入，{@link #render} 时按这个坐标画 hint。与按钮一起参与垂直滚动
+     * （因为整面板是 clearAndInit 重建的，每次重排 hint 位置都会重新算）。
+     *
+     * <p>动机：{@code autoRefreshIntervalSeconds} 设得过短（如 1 秒）会让模组每秒发送一次
+     * {@code /trigger ViewStats} 命令；多人服务器侧的反 spam / rate limit 会因此把玩家踢出
+     * （CTT 官服已多次出现过该原因的掉线）。在按钮下方挂红色小字提醒，避免新玩家无意中踩坑。
+     */
+    private int refreshHintY;
+
     public ConfigScreen(Screen parent) {
         super(Text.translatable("ctt-health-display.config.title"));
         this.parent = parent;
@@ -139,7 +150,10 @@ public class ConfigScreen extends Screen {
             refreshInterval = INTERVAL_OPTIONS[(idx + 1) % INTERVAL_OPTIONS.length];
             btn.setMessage(refreshBtnText());
         }).dimensions(x, y, btnW, OPTION_BTN_H).build());
-        y += OPTION_SPACING;
+        // v8.x · 在按钮下方插入一行 "过短会被踢" 警告。OPTION_BTN_H(20) + 2px 边距 = 22 px 是 hint 起点；
+        // hint 行高用 textRenderer.fontHeight + 3 = 12 px；其余按 OPTION_SPACING 节奏继续往下排。
+        refreshHintY = y + OPTION_BTN_H + 2;
+        y += OPTION_SPACING + (textRenderer.fontHeight + 3);
 
         addDrawableChild(ButtonWidget.builder(mobBarWidthBtnText(), btn -> {
             int idx = 0;
@@ -385,6 +399,15 @@ public class ConfigScreen extends Screen {
                 textRenderer,
                 Text.translatable("ctt-health-display.config.header_options"),
                 optionPanelX, 26, 0xFF888888
+        );
+
+        // v8.x · "属性刷新时间"按钮下方红色警告：设得过短会让模组每 N 秒发一次
+        // /trigger ViewStats，多人服务器的反 spam / rate limit 会因此踢人。
+        // 紧贴按钮下方画，与按钮一起参与滚动（refreshHintY 在 init 中已按当前 scrollOffset 算好）。
+        context.drawTextWithShadow(
+                textRenderer,
+                Text.translatable("ctt-health-display.config.hint.refresh_interval_warning"),
+                optionPanelX, refreshHintY, 0xFFFF5555
         );
 
         renderMatePreview(context);

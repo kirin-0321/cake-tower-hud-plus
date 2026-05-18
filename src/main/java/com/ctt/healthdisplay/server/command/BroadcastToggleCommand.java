@@ -34,7 +34,8 @@ import java.util.UUID;
  *   /ctthd broadcast damage on|off                自己订阅 / 退订 伤害广播
  *   /ctthd broadcast kill on|off                  自己订阅 / 退订 击杀广播
  *   /ctthd broadcast taken on|off                 自己订阅 / 退订 承伤广播
- *   /ctthd broadcast all on|off                   自己一键三档
+ *   /ctthd broadcast stage_report on|off          自己订阅 / 退订 每关战绩广播（v8.x 默认关）
+ *   /ctthd broadcast all on|off                   自己一键四档
  *   /ctthd broadcast taken_threshold &lt;int&gt;        全局承伤阈值（仍是 ServerConfig 字段，会写盘）
  * </pre>
  *
@@ -65,9 +66,10 @@ public final class BroadcastToggleCommand {
                 .requires(src -> true)
                 .executes(BroadcastToggleCommand::runStatus));
 
-        broadcast.then(buildToggle("damage", BroadcastSubscribers.Channel.DAMAGE));
-        broadcast.then(buildToggle("kill",   BroadcastSubscribers.Channel.KILL));
-        broadcast.then(buildToggle("taken",  BroadcastSubscribers.Channel.TAKEN));
+        broadcast.then(buildToggle("damage",       BroadcastSubscribers.Channel.DAMAGE));
+        broadcast.then(buildToggle("kill",         BroadcastSubscribers.Channel.KILL));
+        broadcast.then(buildToggle("taken",        BroadcastSubscribers.Channel.TAKEN));
+        broadcast.then(buildToggle("stage_report", BroadcastSubscribers.Channel.STAGE_REPORT));
 
         broadcast.then(CommandManager.literal("all")
                 .requires(src -> true)
@@ -119,7 +121,7 @@ public final class BroadcastToggleCommand {
             if (on) BroadcastSubscribers.subscribe(ch, uuid);
             else    BroadcastSubscribers.unsubscribe(ch, uuid);
         }
-        Text msg = Text.literal("[CTT] 你的三档广播订阅已统一切到 ")
+        Text msg = Text.literal("[CTT] 你的四档广播订阅（damage/kill/taken/stage_report）已统一切到 ")
                 .formatted(Formatting.GRAY)
                 .append(Text.literal(on ? "ON" : "OFF").formatted(on ? Formatting.GREEN : Formatting.RED));
         ctx.getSource().sendFeedback(() -> msg, false);
@@ -161,9 +163,10 @@ public final class BroadcastToggleCommand {
         src.sendFeedback(() -> head, false);
 
         if (uuid != null) {
-            sendStatusLine(src, "你订阅 damage", BroadcastSubscribers.isSubscribed(BroadcastSubscribers.Channel.DAMAGE, uuid));
-            sendStatusLine(src, "你订阅 kill  ", BroadcastSubscribers.isSubscribed(BroadcastSubscribers.Channel.KILL,   uuid));
-            sendStatusLine(src, "你订阅 taken ", BroadcastSubscribers.isSubscribed(BroadcastSubscribers.Channel.TAKEN,  uuid));
+            sendStatusLine(src, "你订阅 damage      ", BroadcastSubscribers.isSubscribed(BroadcastSubscribers.Channel.DAMAGE,       uuid));
+            sendStatusLine(src, "你订阅 kill        ", BroadcastSubscribers.isSubscribed(BroadcastSubscribers.Channel.KILL,         uuid));
+            sendStatusLine(src, "你订阅 taken       ", BroadcastSubscribers.isSubscribed(BroadcastSubscribers.Channel.TAKEN,        uuid));
+            sendStatusLine(src, "你订阅 stage_report", BroadcastSubscribers.isSubscribed(BroadcastSubscribers.Channel.STAGE_REPORT, uuid));
         } else {
             Text note = Text.literal("  （控制台执行：仅显示全局兜底状态）").formatted(Formatting.DARK_GRAY);
             src.sendFeedback(() -> note, false);
@@ -171,9 +174,10 @@ public final class BroadcastToggleCommand {
 
         Text divider = Text.literal("  ----- 全局兜底（编辑 JSON 启用，对所有玩家广播）-----").formatted(Formatting.DARK_GRAY);
         src.sendFeedback(() -> divider, false);
-        sendStatusLine(src, "global damage", c.broadcastDamageInChat);
-        sendStatusLine(src, "global kill  ", c.broadcastKillsInChat);
-        sendStatusLine(src, "global taken ", c.broadcastTakenInChat);
+        sendStatusLine(src, "global damage      ", c.broadcastDamageInChat);
+        sendStatusLine(src, "global kill        ", c.broadcastKillsInChat);
+        sendStatusLine(src, "global taken       ", c.broadcastTakenInChat);
+        sendStatusLine(src, "global stage_report", c.broadcastStageReportInChat);
         Text tDamage = Text.literal("  damage_threshold = " + c.broadcastDamageThreshold
                 + (c.broadcastDamageThreshold == 0 ? "（全部）" : "")).formatted(Formatting.DARK_GRAY);
         src.sendFeedback(() -> tDamage, false);
@@ -181,7 +185,7 @@ public final class BroadcastToggleCommand {
                 + (c.broadcastTakenThreshold == 0 ? "（全部）" : "")).formatted(Formatting.DARK_GRAY);
         src.sendFeedback(() -> tTaken, false);
 
-        Text help = Text.literal("用法: /ctthd broadcast <damage|kill|taken|all> <on|off>  （仅你自己看到）")
+        Text help = Text.literal("用法: /ctthd broadcast <damage|kill|taken|stage_report|all> <on|off>  （仅你自己看到）")
                 .formatted(Formatting.DARK_GRAY);
         src.sendFeedback(() -> help, false);
         Text help2 = Text.literal("阈值: /ctthd broadcast <damage_threshold|taken_threshold> <int>  （全局，写盘）")

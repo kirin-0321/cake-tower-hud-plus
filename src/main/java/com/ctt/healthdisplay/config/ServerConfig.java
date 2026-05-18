@@ -63,6 +63,19 @@ public class ServerConfig {
     /** 是否在聊天栏广播承伤事件 {@code [承伤] Player -40}。默认关。 */
     public boolean broadcastTakenInChat = false;
     /**
+     * 每关结束聊天栏战绩面板（{@link com.ctt.healthdisplay.server.StageReportBroadcaster}）
+     * 的<b>全局兜底</b>开关。默认 {@code false}：
+     * <ul>
+     *   <li>默认走 per-player 订阅路径（玩家用 {@code /ctthd broadcast stage_report on}
+     *       或配置界面订阅后才会收到自己那份战报），照顾新玩家不被刷屏。</li>
+     *   <li>设为 {@code true} = 退回 v8.0.x 之前的旧行为，所有在线玩家都会收到，
+     *       适合赛事 / 教学场景或运维想统一推广播给全员。</li>
+     * </ul>
+     * v8.x 迁移分支 v6 把"旧 JSON 没这字段"的玩家锁定到 {@code false}（已经是默认值），
+     * 不会保留旧版本的隐式 "全员广播" 行为。
+     */
+    public boolean broadcastStageReportInChat = false;
+    /**
      * 承伤广播阈值：本 tick DamageTook &lt; 该值时不广播。默认 0（全部广播）。
      * v8.x · 默认从 1 改为 0 —— 0 与 1 在 PlayerTakenProbe 的 {@code v &gt; 0} 前置守卫下行为相同，
      * 但 0 的语义更清晰直白（"零阈值 = 全广播"），与 {@link #broadcastDamageThreshold} 对齐。

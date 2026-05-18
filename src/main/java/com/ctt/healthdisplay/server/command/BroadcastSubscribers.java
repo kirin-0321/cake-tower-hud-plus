@@ -31,19 +31,30 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class BroadcastSubscribers {
 
-    public enum Channel { DAMAGE, KILL, TAKEN }
+    /**
+     * v8.x · 广播订阅频道。
+     * <ul>
+     *   <li>{@link #DAMAGE} / {@link #KILL} / {@link #TAKEN} —— 调试性质的逐事件聊天广播。</li>
+     *   <li>{@link #STAGE_REPORT} —— 每关结束聊天栏战绩面板（{@link com.ctt.healthdisplay.server.StageReportBroadcaster}）。
+     *       从默认全员广播改成订阅制：新玩家默认安静，关心战绩的玩家用
+     *       {@code /ctthd broadcast stage_report on} 或在配置界面开启订阅。</li>
+     * </ul>
+     */
+    public enum Channel { DAMAGE, KILL, TAKEN, STAGE_REPORT }
 
-    private static final Set<UUID> DAMAGE = ConcurrentHashMap.newKeySet();
-    private static final Set<UUID> KILL   = ConcurrentHashMap.newKeySet();
-    private static final Set<UUID> TAKEN  = ConcurrentHashMap.newKeySet();
+    private static final Set<UUID> DAMAGE       = ConcurrentHashMap.newKeySet();
+    private static final Set<UUID> KILL         = ConcurrentHashMap.newKeySet();
+    private static final Set<UUID> TAKEN        = ConcurrentHashMap.newKeySet();
+    private static final Set<UUID> STAGE_REPORT = ConcurrentHashMap.newKeySet();
 
     private BroadcastSubscribers() {}
 
     private static Set<UUID> setOf(Channel ch) {
         return switch (ch) {
-            case DAMAGE -> DAMAGE;
-            case KILL   -> KILL;
-            case TAKEN  -> TAKEN;
+            case DAMAGE       -> DAMAGE;
+            case KILL         -> KILL;
+            case TAKEN        -> TAKEN;
+            case STAGE_REPORT -> STAGE_REPORT;
         };
     }
 
@@ -63,12 +74,13 @@ public final class BroadcastSubscribers {
         return !setOf(ch).isEmpty();
     }
 
-    /** 玩家断线时清理三档订阅（CttStatsServer DISCONNECT 钩子调）。 */
+    /** 玩家断线时清理全部档位订阅（CttStatsServer DISCONNECT 钩子调）。 */
     public static void onPlayerDisconnect(UUID uuid) {
         if (uuid == null) return;
         DAMAGE.remove(uuid);
         KILL.remove(uuid);
         TAKEN.remove(uuid);
+        STAGE_REPORT.remove(uuid);
     }
 
     /**

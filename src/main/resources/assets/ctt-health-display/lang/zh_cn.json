@@ -37,6 +37,7 @@
   "ctt-health-display.config.option.mob_head_hp": "怪物头顶血量: %s",
   "ctt-health-display.config.option.teammate_layout": "队友布局: %s",
   "ctt-health-display.config.option.refresh_interval_seconds": "属性刷新时间: %s秒",
+  "ctt-health-display.config.hint.refresh_interval_warning": "\u26A0 过短会高频触发 /trigger ViewStats，可能被服务器反作弊踢线",
   "ctt-health-display.config.option.mob_bar_width": "怪物血条宽度: %s",
   "ctt-health-display.config.option.teammate_bar_width": "队友血条宽度: %s",
   "ctt-health-display.config.option.stats_columns": "属性栏列数: %s列",
@@ -48,6 +49,7 @@
   "ctt-health-display.config.option.broadcast_damage": "聊天栏广播·伤害: %s",
   "ctt-health-display.config.option.broadcast_kills": "聊天栏广播·击杀: %s",
   "ctt-health-display.config.option.broadcast_taken": "聊天栏广播·承伤: %s",
+  "ctt-health-display.config.option.broadcast_stage_report": "聊天栏广播·每关战绩: %s",
 
   "ctt-health-display.config.option.client_damage_hud_header": "全队伤害击杀显示: %s",
   "ctt-health-display.config.option.embedded_hud_mode": "每人伤害击杀显示: %s",

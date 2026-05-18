@@ -3,7 +3,7 @@
   "id": "ctt-health-display",
   "version": "${version}",
   "name": "Cake Tower HUD Plus",
-  "description": "蛋糕塔 Chapter 3 (Cake Team Towers) 专用纯客户端 HUD：自绘血量条、属性面板、队友头顶血条、怪物追踪、攻击者归属、伤害分配 (L)、K/D/A 统计 (N)。可拖拽 + ModMenu。\nClient-only HUD for Cake Team Towers Chapter 3: custom health bars, stats panel, teammate overhead bars, mob tracking, attacker attribution, damage panel (L), K/D/A stats (N). Drag-to-position + ModMenu.\n\nv6.0+ 服务端功能由 OnlyScoutCat 赞助 · 服务器 sc4.i9idc.com:12439\nServer-side features (v6.0+) sponsored by OnlyScoutCat · sc4.i9idc.com:12439",
+  "description": "蛋糕塔 Chapter 3 (Cake Team Towers) 专用纯客户端 HUD：自绘血量条、属性面板、队友头顶血条、怪物追踪。可拖拽 + ModMenu。\n\u26A0 实验性功能（可能有问题）：伤害统计 / 攻击者归属 / 伤害分配 (L) / K/D/A 统计 (N) / 每关战绩广播。仍在调优中，数值可能不准、归属可能误判、聊天广播默认关闭。\nClient-only HUD for Cake Team Towers Chapter 3: custom health bars, stats panel, teammate overhead bars, mob tracking. Drag-to-position + ModMenu.\n\u26A0 Experimental (may misbehave): combat analytics / attacker attribution / damage panel (L) / K/D/A stats (N) / per-stage chat report. Numbers may be off, attribution may misroute, chat broadcasts default OFF.\n\nv6.0+ 服务端功能由 OnlyScoutCat 赞助 · 服务器 sc4.i9idc.com:12439\nServer-side features (v6.0+) sponsored by OnlyScoutCat · sc4.i9idc.com:12439",
   "authors": ["\u9e92\u9e9f(Kirin0321)"],
   "contributors": [
     "OnlyScoutCat (Sponsor · MC Server sc4.i9idc.com:12439)"

@@ -51,10 +51,11 @@ public class CttStatsServer implements ModInitializer {
         //   - 专用服务器读自己的 server config
         //   - 集成单机 ConfigScreen 也能即时读写同一份 INSTANCE
         com.ctt.healthdisplay.config.ServerConfig.load();
-        LOGGER.info("[CTT Stats] server config loaded (broadcastDamage={}, broadcastKills={}, broadcastTaken={}, useRedHearts={})",
+        LOGGER.info("[CTT Stats] server config loaded (broadcastDamage={}, broadcastKills={}, broadcastTaken={}, broadcastStageReport={}, useRedHearts={})",
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastDamageInChat,
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastKillsInChat,
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastTakenInChat,
+                com.ctt.healthdisplay.config.ServerConfig.INSTANCE.broadcastStageReportInChat,
                 com.ctt.healthdisplay.config.ServerConfig.INSTANCE.useRedHeartsTally);
 
         // v8.x · 注册 /ctthd broadcast ... 运行时开关命令。requires=true，

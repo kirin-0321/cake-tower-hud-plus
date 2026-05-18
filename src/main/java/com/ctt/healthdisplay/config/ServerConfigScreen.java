@@ -41,6 +41,7 @@ public class ServerConfigScreen extends Screen {
     private boolean broadcastDamage;
     private boolean broadcastKills;
     private boolean broadcastTaken;
+    private boolean broadcastStageReport;
     private int broadcastTakenThreshold;
     private boolean useRedHearts;
     private boolean filterInitHpJumps;
@@ -71,6 +72,7 @@ public class ServerConfigScreen extends Screen {
             broadcastDamage         = cfg.broadcastDamageInChat;
             broadcastKills          = cfg.broadcastKillsInChat;
             broadcastTaken          = cfg.broadcastTakenInChat;
+            broadcastStageReport    = cfg.broadcastStageReportInChat;
             broadcastTakenThreshold = cfg.broadcastTakenThreshold;
             useRedHearts            = cfg.useRedHeartsTally;
             filterInitHpJumps       = cfg.filterInitHpJumps;
@@ -99,6 +101,15 @@ public class ServerConfigScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(broadcastTakenBtnText(), btn -> {
             broadcastTaken = !broadcastTaken;
             btn.setMessage(broadcastTakenBtnText());
+        }).dimensions(x, y, btnW, OPTION_BTN_H).build());
+        y += OPTION_SPACING;
+
+        // v8.x · 每关战绩广播（StageReportBroadcaster）从全员默认改为订阅制，
+        // 这里 toggle 的是"全局兜底"开关：开 = 退回旧行为对全员广播；
+        // 关 = 仅给 /ctthd broadcast stage_report on 的玩家广播（默认安静）。
+        addDrawableChild(ButtonWidget.builder(broadcastStageReportBtnText(), btn -> {
+            broadcastStageReport = !broadcastStageReport;
+            btn.setMessage(broadcastStageReportBtnText());
         }).dimensions(x, y, btnW, OPTION_BTN_H).build());
         y += OPTION_SPACING;
 
@@ -183,12 +194,16 @@ public class ServerConfigScreen extends Screen {
         cfg.broadcastDamageInChat        = broadcastDamage;
         cfg.broadcastKillsInChat         = broadcastKills;
         cfg.broadcastTakenInChat         = broadcastTaken;
+        cfg.broadcastStageReportInChat   = broadcastStageReport;
         cfg.broadcastTakenThreshold      = broadcastTakenThreshold;
         cfg.useRedHeartsTally            = useRedHearts;
         cfg.filterInitHpJumps            = filterInitHpJumps;
         cfg.filterSuspectVictims         = filterSuspectVictims;
         cfg.suspectVictimDamageThreshold = suspectThreshold;
         cfg.save();
+        // v8.x · 集成单机场景下，配置界面 toggle 即时生效——同 JVM 直接覆盖 INSTANCE 字段后
+        // 下一次 stage exit StageReportBroadcaster 就会按新值走。远程客户端写到本地拷贝
+        // 不影响远程服务端（同 broadcastDamageInChat 等其它字段，是已知局限）。
         client.setScreen(parent);
     }
 
@@ -220,6 +235,9 @@ public class ServerConfigScreen extends Screen {
     }
     private Text broadcastTakenBtnText() {
         return Text.translatable("ctt-health-display.config.option.broadcast_taken", onOff(broadcastTaken));
+    }
+    private Text broadcastStageReportBtnText() {
+        return Text.translatable("ctt-health-display.config.option.broadcast_stage_report", onOff(broadcastStageReport));
     }
     private Text broadcastTakenThresholdBtnText() {
         return Text.translatable("ctt-health-display.config.server.option.broadcast_taken_threshold", broadcastTakenThreshold);
