@@ -101,5 +101,8 @@
   "ctt-health-display.config.server.option.suspect_victim_threshold": "可疑受害者阈值: %s",
   "ctt-health-display.config.server.option.collect_magum_trials": "Magum Trials \u5206\u5173\u91c7\u96c6: %s",
   "ctt-health-display.config.server.info.init_hp_values": "\u00a78初始血量列表: %s",
-  "ctt-health-display.config.server.info.suspect_victims": "\u00a78可疑受害者: %s"
+  "ctt-health-display.config.server.info.suspect_victims": "\u00a78可疑受害者: %s",
+
+  "ctt-health-display.command.reload.success": "已重新加载 config/ctt-health-display.json（癫狂时隐藏HUD: %s）",
+  "ctt-health-display.command.reload.no_file": "\u00a77未找到配置文件，已使用默认值；保存游戏设置后会写入磁盘。"
 }

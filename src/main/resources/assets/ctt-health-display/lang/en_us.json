@@ -101,5 +101,8 @@
   "ctt-health-display.config.server.option.suspect_victim_threshold": "Suspect victim threshold: %s",
   "ctt-health-display.config.server.option.collect_magum_trials": "Collect Magum Trials per-floor: %s",
   "ctt-health-display.config.server.info.init_hp_values": "\u00a78Initial HP list: %s",
-  "ctt-health-display.config.server.info.suspect_victims": "\u00a78Suspect victims: %s"
+  "ctt-health-display.config.server.info.suspect_victims": "\u00a78Suspect victims: %s",
+
+  "ctt-health-display.command.reload.success": "Reloaded config/ctt-health-display.json (hide HUD on Berserk: %s)",
+  "ctt-health-display.command.reload.no_file": "\u00a77Config file not found; using defaults."
 }

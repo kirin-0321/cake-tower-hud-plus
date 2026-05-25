@@ -1,5 +1,7 @@
 package com.ctt.healthdisplay.mixin;
 
+import com.ctt.healthdisplay.CttHealthDisplay;
+import com.ctt.healthdisplay.client.HudRenderGate;
 import com.ctt.healthdisplay.config.ModConfig;
 import com.ctt.healthdisplay.health.HealthData;
 import com.ctt.healthdisplay.health.MobHealthData;
@@ -38,6 +40,8 @@ public abstract class TeammateHealthMixin<S extends EntityRenderState> {
     @Inject(method = "renderLabelIfPresent", at = @At("HEAD"), cancellable = true)
     private void ctt_onLabel(EntityRenderState state, Text text, MatrixStack matrices,
                              VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
+        if (HudRenderGate.shouldSuppressModHud(CttHealthDisplay.statsData)) return;
+
         String label = text.getString().trim();
         String entityName = state.displayName != null ? state.displayName.getString().trim() : "";
         Vec3d pos = state.nameLabelPos;

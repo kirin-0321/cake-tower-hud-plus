@@ -1,5 +1,7 @@
 package com.ctt.healthdisplay.mixin;
 
+import com.ctt.healthdisplay.CttHealthDisplay;
+import com.ctt.healthdisplay.client.HudRenderGate;
 import com.ctt.healthdisplay.hud.TeammateWorldRenderer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.WorldRenderer;
@@ -41,6 +43,8 @@ public class WorldRendererMixin {
             logged = true;
             LOGGER.info("WorldRendererMixin applied successfully!");
         }
+        if (HudRenderGate.shouldSuppressModHud(CttHealthDisplay.statsData)) return;
+
         TeammateWorldRenderer.renderHealthBar(entity, cameraX, cameraY, cameraZ,
                 tickDelta, matrices, vertexConsumers, entityRenderDispatcher);
         TeammateWorldRenderer.renderMobHealthBar(entity, cameraX, cameraY, cameraZ,

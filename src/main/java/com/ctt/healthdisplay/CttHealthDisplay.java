@@ -1,7 +1,10 @@
 package com.ctt.healthdisplay;
 
+import com.ctt.healthdisplay.client.ClientConfigReloadCommand;
 import com.ctt.healthdisplay.client.CdpPersistence;
 import com.ctt.healthdisplay.client.ClientDamageProbe;
+import com.ctt.healthdisplay.client.BerserkDetector;
+import com.ctt.healthdisplay.client.HudRenderGate;
 import com.ctt.healthdisplay.client.ClientMobHealthCache;
 import com.ctt.healthdisplay.client.ClientStageProbe;
 import com.ctt.healthdisplay.client.ClientStatsCache;
@@ -93,6 +96,7 @@ public class CttHealthDisplay implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ModConfig.load();
+        ClientConfigReloadCommand.register();
         // v6.5.7 · 关卡 ID → 本地化名称硬编码表（来自 scripts/gen_stage_name_map.py 生成）。
         StageNameRegistry.load();
         healthData.setStatsData(statsData);
@@ -192,6 +196,7 @@ public class CttHealthDisplay implements ClientModInitializer {
             // 头顶条立刻退回 v8.3.x 单色多槽。
             ClientStatsPushCache.reset();
             ClientTeamHeartsCache.reset();
+            BerserkDetector.reset();
         });
 
         // v8.1.0 · CDP 持久化生命周期钩子：
@@ -256,6 +261,8 @@ public class CttHealthDisplay implements ClientModInitializer {
         });
 
         HudRenderCallback.EVENT.register((context, tickCounter) -> {
+            if (HudRenderGate.shouldSuppressModHud(statsData)) return;
+
             if (hudEnabled) {
                 HealthBarRenderer.render(context, tickCounter, healthData, statsData);
             }
@@ -320,6 +327,7 @@ public class CttHealthDisplay implements ClientModInitializer {
             // Keep HealthData fresh even when HUD is off, so we can auto-toggle party bossbar.
             if (client.player != null && client.world != null) {
                 healthData.update();
+                BerserkDetector.tick(client, statsData);
                 maybeAutoTogglePartyBossbar(client);
             }
 
@@ -386,7 +394,8 @@ public class CttHealthDisplay implements ClientModInitializer {
                 handleStatsTableToggle(client);
             }
             // v6.3.0 · actionbar 只在 session 活跃且面板 Screen 未打开时显示（避免遮挡）
-            if (DamageProbe.isSessionActive() && !(client.currentScreen instanceof DamagePanelScreen)) {
+            if (DamageProbe.isSessionActive() && !(client.currentScreen instanceof DamagePanelScreen)
+                    && !HudRenderGate.shouldSuppressModHud(statsData)) {
                 renderDmgSessionActionbar(client);
             }
             ModConfig config = ModConfig.INSTANCE;

@@ -117,6 +117,16 @@ public class ModConfig {
      */
     public boolean clientKillDebugChat = false;
 
+    /**
+     * v8.4.5 · 癫狂（Berserk）状态时是否隐藏本模组全部 HUD（血条 / 属性 / 队友头顶条 /
+     * 怪物条 / 伤害面板等）。默认 {@code true}。
+     *
+     * <p>癫狂判定：属性面板数据行中出现 {@code Berserk} 翻译键或其本地化文本
+     *（英文 {@code Berserk}、中文 {@code 癫狂}）。不在 ModMenu 配置界面暴露，
+     * 仅通过 {@code config/ctt-health-display.json} 手改 + {@code /ctthd reload} 热加载。
+     */
+    public boolean hideHudOnBerserk = true;
+
     // ===== v6.6.4 · M5 · 服务端字段已迁出 =====
     // 以下字段从 v6.6.4 起搬到 {@link ServerConfig}（独立 JSON 文件
     // {@code config/ctt-health-display-server.json}），本类不再持有：
@@ -146,11 +156,25 @@ public class ModConfig {
                 if (loaded != null) {
                     loaded.migrate();
                     INSTANCE = loaded;
+                    return;
                 }
             } catch (Exception e) {
-                INSTANCE = new ModConfig();
+                e.printStackTrace();
             }
         }
+        INSTANCE = new ModConfig();
+    }
+
+    /**
+     * 从磁盘重新读取 {@code config/ctt-health-display.json} 并替换 {@link #INSTANCE}。
+     * 供 {@code /ctthd reload} 客户端命令调用；修改 hideHudOnBerserk 等隐藏项后无需重启游戏。
+     *
+     * @return 是否成功读到已有配置文件（文件不存在时使用默认值，仍返回 {@code true}）
+     */
+    public static boolean reload() {
+        boolean existed = Files.exists(CONFIG_PATH);
+        load();
+        return existed;
     }
 
     /**

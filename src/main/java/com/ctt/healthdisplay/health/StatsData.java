@@ -3,12 +3,14 @@ package com.ctt.healthdisplay.health;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import net.minecraft.text.TextColor;
+import net.minecraft.text.TranslatableTextContent;
 import net.minecraft.util.Formatting;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,6 +39,11 @@ public class StatsData {
     private static final TextColor COLOR_BLACK = TextColor.fromFormatting(Formatting.BLACK);
     private static final TextColor COLOR_BLUE = TextColor.fromFormatting(Formatting.BLUE);
     private static final Pattern HEART_LINE_PATTERN = Pattern.compile("^(\\d+)\u2764$");
+
+    /** Cake Team Towers 癫狂状态在 datapack / 服务端 builder 中的 translate key。 */
+    private static final String BERSERK_TRANSLATE_KEY = "Berserk";
+    /** 中文资源包对 {@link #BERSERK_TRANSLATE_KEY} 的本地化（无资源包时不会命中）。 */
+    private static final String BERSERK_ZH_PLAIN = "\u7656\u72c2";
 
     public void markAutoTriggered() {
         hideCapture = true;
@@ -154,6 +161,50 @@ public class StatsData {
     public int getSoulHearts() { return soulHearts; }
     public int getBlackHearts() { return blackHearts; }
     public int getBlueHearts() { return blueHearts; }
+
+    /**
+     * 当前属性面板是否包含癫狂（Berserk）状态行。
+     *
+     * <p>服务端 push 与聊天 capture 两条路径都会在癫狂时输出
+     * {@code Text.translatable("Berserk")}（客户端汉化后为「癫狂」）。
+     * 检测顺序：翻译键 {@link #BERSERK_TRANSLATE_KEY} → 本地化纯文本
+     *（{@code 癫狂} / {@code Berserk}）。
+     *
+     * @return {@code hasData()} 且任一行匹配癫狂标记
+     */
+    public boolean isBerserkActive() {
+        if (!hasData) return false;
+        for (Text line : lines) {
+            if (lineContainsBerserk(line)) return true;
+        }
+        return false;
+    }
+
+    private static boolean lineContainsBerserk(Text text) {
+        if (text == null) return false;
+        if (text.getContent() instanceof TranslatableTextContent ttc
+                && BERSERK_TRANSLATE_KEY.equals(ttc.getKey())) {
+            return true;
+        }
+        AtomicBoolean hit = new AtomicBoolean(false);
+        text.visit((style, string) -> {
+            if (string == null || string.isBlank()) return Optional.empty();
+            String t = string.trim();
+            if (BERSERK_ZH_PLAIN.equals(t) || BERSERK_TRANSLATE_KEY.equalsIgnoreCase(t)) {
+                hit.set(true);
+            }
+            return Optional.empty();
+        }, Style.EMPTY);
+        if (hit.get()) return true;
+        String plain = text.getString().trim();
+        if (BERSERK_TRANSLATE_KEY.equalsIgnoreCase(plain) || BERSERK_ZH_PLAIN.equals(plain)) {
+            return true;
+        }
+        for (Text sibling : text.getSiblings()) {
+            if (lineContainsBerserk(sibling)) return true;
+        }
+        return false;
+    }
 
     /**
      * v8.4.0 · 服务端 {@code PlayerStatsPushBroadcaster} 推送入口。
